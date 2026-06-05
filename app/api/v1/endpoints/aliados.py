@@ -25,6 +25,52 @@ from app.schemas.aliados import (
 router = APIRouter()
 
 
+# ── Whoami: detecta rol en una sola llamada ───────────────────────────────────
+
+@router.get("/whoami", summary="Detecta el rol del usuario autenticado (operador o aliado)")
+async def whoami(
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    """
+    Devuelve { role: 'operador' | 'aliado', ...perfil } en una sola petición.
+    Evita que el frontend haga dos llamadas secuenciales de prueba-y-error.
+    """
+    user_id = str(current_user.id)
+
+    # 1. ¿Es operador?
+    try:
+        result = (
+            client.table("validators")
+            .select("id, full_name, center_id, centers(name)")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        if result.data:
+            return {"role": "operador", **result.data}
+    except APIError as e:
+        if e.code != "PGRST116":
+            raise
+
+    # 2. ¿Es aliado (merchant)?
+    try:
+        result = (
+            client.table("merchant_users")
+            .select("*, merchant_partners(*)")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+        if result.data:
+            return {"role": "aliado", **result.data}
+    except APIError as e:
+        if e.code != "PGRST116":
+            raise
+
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no registrado como aliado u operador")
+
+
 # ── Merchant: perfil ──────────────────────────────────────────────────────────
 
 @router.get("/me", response_model=MerchantUserOut, summary="Perfil del aliado autenticado")
