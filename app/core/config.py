@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # En Railway (producción): COOKIE_SECURE=true
     COOKIE_SECURE: bool = True
     COOKIE_DOMAIN: str = ""          # Dejar vacío para que aplique al dominio actual
-    COOKIE_SAMESITE: str = "strict"  # "strict" | "lax" | "none"
+    COOKIE_SAMESITE: str = "none"    # "none" es requerido si el frontend y backend están en dominios distintos
     COOKIE_MAX_AGE: int = 60 * 60 * 24 * 60  # 60 días (igual que refresh_token de Supabase)
 
     @property
