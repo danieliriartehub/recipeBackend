@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import List
+from postgrest.exceptions import APIError
 
 from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
@@ -32,13 +33,18 @@ async def get_merchant_me(
     client: Client = Depends(get_supabase_admin_client),
 ):
     user_id = str(current_user.id)
-    result = (
-        client.table("merchant_users")
-        .select("*, merchant_partners(*)")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
+    try:
+        result = (
+            client.table("merchant_users")
+            .select("*, merchant_partners(*)")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+    except APIError as e:
+        if e.code == "PGRST116":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aliado no encontrado")
+        raise
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aliado no encontrado")
     return MerchantUserOut(**result.data)
@@ -138,13 +144,18 @@ async def get_operator_me(
     client: Client = Depends(get_supabase_admin_client),
 ):
     user_id = str(current_user.id)
-    result = (
-        client.table("validators")
-        .select("id, full_name, center_id, centers(name)")
-        .eq("id", user_id)
-        .single()
-        .execute()
-    )
+    try:
+        result = (
+            client.table("validators")
+            .select("id, full_name, center_id, centers(name)")
+            .eq("id", user_id)
+            .single()
+            .execute()
+        )
+    except APIError as e:
+        if e.code == "PGRST116":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operador no encontrado")
+        raise
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Operador no encontrado")
     return ValidatorOut(**result.data)
