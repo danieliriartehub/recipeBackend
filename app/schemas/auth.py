@@ -26,8 +26,11 @@ class UserOut(BaseModel):
 
 
 class SessionOut(BaseModel):
+    """
+    Solo expone el access_token en el body JSON.
+    El refresh_token se transmite exclusivamente via cookie HttpOnly — nunca en el payload.
+    """
     access_token: str
-    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
     user: UserOut
@@ -40,6 +43,12 @@ class LoginResponse(BaseModel):
 class RegisterResponse(BaseModel):
     needs_confirmation: bool
     session: Optional[SessionOut] = None
+
+
+class RefreshResponse(BaseModel):
+    """Respuesta del endpoint /refresh — solo el nuevo access_token."""
+    access_token: str
+    expires_in: int
 
 
 class ProfileOut(BaseModel):
