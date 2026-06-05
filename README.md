@@ -1,7 +1,5 @@
 # Recipe Backend API
 
-FastAPI backend para la app de recetas. Reemplaza las queries directas a Supabase del frontend.
-
 ## Estructura del proyecto
 
 ```
