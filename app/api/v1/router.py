@@ -11,6 +11,7 @@ from app.api.v1.endpoints import (
     rankings,
     missions,
     aliados,
+    simulator,
 )
 
 api_router = APIRouter()
@@ -26,3 +27,4 @@ api_router.include_router(scans.router,         prefix="/scans",         tags=["
 api_router.include_router(rankings.router,      prefix="/rankings",      tags=["rankings"])
 api_router.include_router(missions.router,      prefix="/missions",      tags=["missions"])
 api_router.include_router(aliados.router,       prefix="/aliados",       tags=["aliados"])
+api_router.include_router(simulator.router,     prefix="/simulator",     tags=["simulator"])
