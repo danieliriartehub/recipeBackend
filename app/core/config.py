@@ -9,11 +9,15 @@ class Settings(BaseSettings):
 
     # Supabase
     SUPABASE_URL: str
-    SUPABASE_KEY: str          # anon/public key (for RLS-aware calls)
-    SUPABASE_SERVICE_KEY: str  # service_role key (bypasses RLS, use with care)
+    SUPABASE_KEY: str
+    SUPABASE_SERVICE_KEY: str
 
-    # CORS – lista separada por comas en .env, ej: http://localhost:3000,https://mifrontend.com
-    ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
+    # CORS – separar múltiples orígenes con coma en .env, ej: http://localhost:3000,https://mifrontend.com
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
+
+    @property
+    def allowed_origins_list(self) -> List[str]:
+        return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]
 
     model_config = {"env_file": ".env", "case_sensitive": True}
 
