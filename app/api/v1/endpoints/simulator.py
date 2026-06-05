@@ -28,7 +28,6 @@ async def get_materials(
         result = (
             client.table("materials")
             .select("type, label, emoji, points_per_kg, co2_per_kg, trees_equivalent_per_kg")
-            .eq("is_active", True)
             .order("type")
             .execute()
         )
