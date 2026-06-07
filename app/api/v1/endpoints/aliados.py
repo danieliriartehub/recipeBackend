@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
-from typing import List, Optional
+from typing import List, Optional, Any
 from datetime import datetime, timezone
 from postgrest.exceptions import APIError
 
@@ -183,10 +183,13 @@ async def create_product(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
-    result = client.table("merchant_products").insert(body.model_dump()).select().single().execute()
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo crear el producto")
-    return MerchantProductOut(**result.data)
+    try:
+        result = client.table("merchant_products").insert(body.model_dump()).select().single().execute()
+        if not result.data:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo crear el producto")
+        return MerchantProductOut(**result.data)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"DB Error: {str(e)}")
 
 
 @router.patch("/products/{product_id}", response_model=MerchantProductOut, summary="Actualizar producto")
