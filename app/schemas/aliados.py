@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional, Any
+from pydantic import BaseModel, Field
+from typing import Optional
 from datetime import datetime
 
 
@@ -126,3 +126,26 @@ class RegisterRecyclingRequest(BaseModel):
     center_id: str
     material: str
     kg: float
+
+
+# ── Marketplace ───────────────────────────────────────────────────────────────
+
+class MarketplaceMerchantOut(BaseModel):
+    id: str
+    business_name: str = Field(alias="name")
+    logo_url: Optional[str] = None
+
+
+class MarketplaceProductOut(BaseModel):
+    id: str
+    name: str
+    short_description: Optional[str] = None
+    description: Optional[str] = None
+    points: int
+    stock: Optional[int] = None
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    featured: bool = False
+    available_from: Optional[datetime] = None
+    available_until: Optional[datetime] = None
+    merchant: MarketplaceMerchantOut
