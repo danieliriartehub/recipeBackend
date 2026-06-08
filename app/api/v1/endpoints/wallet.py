@@ -23,15 +23,18 @@ async def get_balance(
 
 @router.get("/history", response_model=List[WalletHistoryOut], summary="Historial completo de movimientos")
 async def get_history(
+    limit: int = 20,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
     user_id = str(current_user.id)
     result = (
-        client.table("wallet_history")
+        client.table("wallet_entries")
         .select("*")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
+        .order("created_at", desc=True)
+        .limit(limit)
         .execute()
     )
     return [WalletHistoryOut(**r) for r in (result.data or [])]
@@ -44,10 +47,11 @@ async def get_recent_history(
 ):
     user_id = str(current_user.id)
     result = (
-        client.table("wallet_history")
+        client.table("wallet_entries")
         .select("*")
         .eq("user_id", user_id)
         .is_("deleted_at", "null")
+        .order("created_at", desc=True)
         .limit(5)
         .execute()
     )
