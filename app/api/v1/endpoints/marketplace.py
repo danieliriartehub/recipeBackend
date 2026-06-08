@@ -62,4 +62,21 @@ async def redeem_reward(
     result = client.table("user_coupons").insert(data).select("*, rewards(*)").single().execute()
     if not result.data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo canjear la recompensa")
+
+    # Obtener info de la recompensa para la wallet
+    reward = result.data.get("rewards")
+    if reward:
+        points = reward.get("points", 0)
+        if points > 0:
+            wallet_entry = {
+                "user_id": user_id,
+                "points": points,
+                "type": "OUT",
+                "title": f"Canje: {reward.get('title', 'Recompensa')}",
+                "detail": "Marketplace",
+                "emoji": "🎁",
+                "related_coupon_id": result.data.get("id"),
+            }
+            client.table("wallet_entries").insert(wallet_entry).execute()
+
     return UserCouponOut(**result.data)
