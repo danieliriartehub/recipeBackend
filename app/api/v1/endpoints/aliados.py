@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from supabase import Client
 from typing import List, Optional, Any
 from datetime import datetime, timezone
 from postgrest.exceptions import APIError
+from datetime import datetime, timezone
 
 from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
@@ -348,3 +349,48 @@ async def register_recycling(
     if not result.data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo registrar el reciclaje")
     return result.data
+
+
+# ── Banners Publicitarios ─────────────────────────────────────────────────────
+
+@router.post("/partner/{partner_id}/banner", summary="Subir banner publicitario del aliado")
+async def upload_partner_banner(
+    partner_id: str,
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    if not file.content_type.startswith("image/webp"):
+        raise HTTPException(status_code=400, detail="Solo se permiten imágenes en formato WebP")
+    
+    try:
+        file_bytes = await file.read()
+        file_path = f"banners/{partner_id}_{int(datetime.now(timezone.utc).timestamp())}.webp"
+        
+        # Upload to supabase storage
+        client.storage.from_("almacenamiento").upload(file_path, file_bytes, {"content-type": "image/webp"})
+        
+        # Get public url
+        public_url = client.storage.from_("almacenamiento").get_public_url(file_path)
+        
+        # Update merchant_partners table
+        client.table("merchant_partners").update({"banner_url": public_url}).eq("id", partner_id).execute()
+        
+        return {"banner_url": public_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/banners", summary="Obtener banners activos")
+async def get_active_banners(
+    client: Client = Depends(get_supabase_admin_client),
+):
+    result = (
+        client.table("merchant_partners")
+        .select("id, business_name, banner_url, website_url")
+        .eq("is_active", True)
+        .not_.is_("banner_url", "null")
+        .execute()
+    )
+    return result.data
+
