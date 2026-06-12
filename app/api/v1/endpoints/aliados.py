@@ -386,9 +386,9 @@ async def upload_partner_banner(
             "link_url": link_url,
             "is_active": True
         }
-        result = client.table("merchant_banners").insert(banner_data).select().single().execute()
+        result = client.table("merchant_banners").insert(banner_data).execute()
         
-        return MerchantBannerOut(**result.data)
+        return MerchantBannerOut(**result.data[0])
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
