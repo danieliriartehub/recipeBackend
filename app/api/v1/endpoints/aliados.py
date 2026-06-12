@@ -23,6 +23,9 @@ from app.schemas.aliados import (
     ConfirmDeliveryRequest,
     RegisterRecyclingRequest,
     MarketplaceProductOut,
+    MerchantBannerCreate,
+    MerchantBannerUpdate,
+    MerchantBannerOut,
 )
 
 router = APIRouter()
@@ -353,10 +356,12 @@ async def register_recycling(
 
 # ── Banners Publicitarios ─────────────────────────────────────────────────────
 
-@router.post("/partner/{partner_id}/banner", summary="Subir banner publicitario del aliado")
+@router.post("/partner/{partner_id}/banners", response_model=MerchantBannerOut, summary="Subir banner publicitario del aliado")
 async def upload_partner_banner(
     partner_id: str,
     file: UploadFile = File(...),
+    title: str = None,
+    link_url: str = None,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
@@ -373,24 +378,95 @@ async def upload_partner_banner(
         # Get public url
         public_url = client.storage.from_("almacenamiento").get_public_url(file_path)
         
-        # Update merchant_partners table
-        client.table("merchant_partners").update({"banner_url": public_url}).eq("id", partner_id).execute()
+        # Insert into merchant_banners
+        banner_data = {
+            "merchant_partner_id": partner_id,
+            "banner_url": public_url,
+            "title": title,
+            "link_url": link_url,
+            "is_active": True
+        }
+        result = client.table("merchant_banners").insert(banner_data).select().single().execute()
         
-        return {"banner_url": public_url}
+        return MerchantBannerOut(**result.data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/partner/{partner_id}/banners", response_model=List[MerchantBannerOut], summary="Listar banners del aliado")
+async def get_partner_banners(
+    partner_id: str,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    result = (
+        client.table("merchant_banners")
+        .select("*")
+        .eq("merchant_partner_id", partner_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return [MerchantBannerOut(**r) for r in (result.data or [])]
 
-@router.get("/banners", summary="Obtener banners activos")
+@router.patch("/partner/{partner_id}/banners/{banner_id}", response_model=MerchantBannerOut, summary="Actualizar banner")
+async def update_partner_banner(
+    partner_id: str,
+    banner_id: str,
+    body: MerchantBannerUpdate,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
+        
+    result = (
+        client.table("merchant_banners")
+        .update(updates)
+        .eq("id", banner_id)
+        .eq("merchant_partner_id", partner_id)
+        .select()
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Banner no encontrado")
+    return MerchantBannerOut(**result.data)
+
+@router.delete("/partner/{partner_id}/banners/{banner_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Eliminar banner")
+async def delete_partner_banner(
+    partner_id: str,
+    banner_id: str,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    # Opcional: Podríamos borrar el archivo de storage también
+    client.table("merchant_banners").delete().eq("id", banner_id).eq("merchant_partner_id", partner_id).execute()
+
+@router.get("/banners", summary="Obtener todos los banners activos (para estudiantes)")
 async def get_active_banners(
     client: Client = Depends(get_supabase_admin_client),
 ):
     result = (
-        client.table("merchant_partners")
-        .select("id, business_name, banner_url, website_url")
+        client.table("merchant_banners")
+        .select("*, merchant_partners!inner(business_name, website_url)")
         .eq("is_active", True)
-        .not_.is_("banner_url", "null")
         .execute()
     )
-    return result.data
+    
+    # Flatten the result for the frontend
+    banners = []
+    for item in (result.data or []):
+        partner = item.get("merchant_partners", {})
+        banner = {
+            "id": item["id"],
+            "merchant_partner_id": item["merchant_partner_id"],
+            "title": item["title"],
+            "banner_url": item["banner_url"],
+            "link_url": item["link_url"] or partner.get("website_url"), # Fallback al website general
+            "business_name": partner.get("business_name"),
+            "display_order": item["display_order"]
+        }
+        banners.append(banner)
+        
+    return banners
 
