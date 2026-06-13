@@ -1,34 +1,19 @@
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from app.schemas.aliados import MarketplaceProductOut
 
 
-class RewardOut(BaseModel):
-    id: str
-    name: Optional[str] = None
-    description: Optional[str] = None
-    points: Optional[int] = None
-    active: Optional[bool] = None
+class RedeemProductRequest(BaseModel):
+    product_id: str
 
 
-class MarketItemOut(BaseModel):
-    id: str
-    name: Optional[str] = None
-    description: Optional[str] = None
-    points: Optional[int] = None
-    active: Optional[bool] = None
-    image_url: Optional[str] = None
-
-
-class UserCouponOut(BaseModel):
+class RedemptionOut(BaseModel):
     id: str
     user_id: str
-    reward_id: str
-    code: Optional[str] = None
-    created_at: Optional[datetime] = None
-    rewards: Optional[RewardOut] = None
-
-
-class RedeemRewardRequest(BaseModel):
-    reward_id: str
-    code: str
+    merchant_product_id: str
+    points_spent: int
+    redemption_code: str
+    status: Optional[str] = None
+    redeemed_at: Optional[datetime] = None
+    product: Optional[MarketplaceProductOut] = None
