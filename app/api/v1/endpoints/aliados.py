@@ -28,11 +28,13 @@ from app.schemas.aliados import (
     MerchantBannerOut,
     GenerateProductDetailsRequest,
     GenerateProductDetailsOut,
+    AdTrackingRequest,
 )
 
 import os
 import google.generativeai as genai
 import json
+import random
 
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
 
@@ -499,29 +501,123 @@ async def delete_partner_banner(
 
 @router.get("/banners", summary="Obtener todos los banners activos (para estudiantes)")
 async def get_active_banners(
-    client: Client = Depends(get_supabase_admin_client),
+    client: Client = Depends(get_supabase_admin_client)
 ):
-    result = (
-        client.table("merchant_banners")
-        .select("*, merchant_partners!inner(business_name, website_url)")
-        .eq("is_active", True)
-        .execute()
-    )
+    try:
+        result = (
+            client.table("merchant_banners")
+            .select("*, merchant_partners(id, business_name, is_active)")
+            .eq("is_active", True)
+            .execute()
+        )
+    except APIError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
     
-    # Flatten the result for the frontend
     banners = []
-    for item in (result.data or []):
-        partner = item.get("merchant_partners", {})
-        banner = {
-            "id": item["id"],
-            "merchant_partner_id": item["merchant_partner_id"],
-            "title": item["title"],
-            "banner_url": item["banner_url"],
-            "link_url": item["link_url"] or partner.get("website_url"), # Fallback al website general
-            "business_name": partner.get("business_name"),
-            "display_order": item["display_order"]
-        }
-        banners.append(banner)
-        
+    for row in result.data:
+        partner = row.get("merchant_partners")
+        if partner and partner.get("is_active"):
+            banner = {k: v for k, v in row.items() if k != "merchant_partners"}
+            banners.append(banner)
+            
     return banners
 
+
+# ── ML Ad Targeting ───────────────────────────────────────────────────────────
+
+@router.post("/banners/track", summary="Registra vistas o clics de un banner para ML")
+async def track_banner(
+    payload: AdTrackingRequest,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client)
+):
+    if payload.action not in ["view", "click"]:
+        raise HTTPException(status_code=400, detail="Action must be view or click")
+    
+    try:
+        data = {
+            "user_id": current_user.id,
+            "banner_id": payload.banner_id,
+            "action": payload.action
+        }
+        client.table("ad_analytics").insert(data).execute()
+        return {"success": True}
+    except Exception as e:
+        print(f"Error tracking banner: {e}")
+        # Silently fail so it doesn't break the frontend experience
+        return {"success": False, "error": str(e)}
+
+@router.get("/banners/target", response_model=MerchantBannerOut, summary="Motor de ML (Epsilon-Greedy) para elegir el mejor banner")
+async def get_targeted_banner(
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client)
+):
+    try:
+        # 1. Obtener todos los banners activos
+        result = client.table("merchant_banners").select("*, merchant_partners(id, business_name, is_active)").eq("is_active", True).execute()
+        
+        banners = []
+        for row in result.data:
+            partner = row.get("merchant_partners")
+            if partner and partner.get("is_active"):
+                banner = {k: v for k, v in row.items() if k != "merchant_partners"}
+                banners.append(banner)
+        
+        if not banners:
+            raise HTTPException(status_code=404, detail="No active banners found")
+
+        # 2. Algoritmo Epsilon-Greedy
+        EPSILON = 0.3 # 30% de las veces explora (random)
+        
+        if random.random() < EPSILON:
+            # EXPLORACIÓN: Elegir uno al azar
+            selected = random.choice(banners)
+            selected['is_ml_targeted'] = False
+            return selected
+            
+        # 3. EXPLOTACIÓN: Buscar el banner con mejor CTR histórico
+        analytics_res = client.table("ad_analytics").select("banner_id, action").execute()
+        analytics = analytics_res.data
+        
+        if not analytics:
+            selected = random.choice(banners)
+            selected['is_ml_targeted'] = False
+            return selected
+            
+        # Calcular CTR por banner
+        stats = {}
+        for row in analytics:
+            b_id = row['banner_id']
+            act = row['action']
+            if b_id not in stats:
+                stats[b_id] = {"views": 0, "clicks": 0}
+            if act == "view":
+                stats[b_id]["views"] += 1
+            elif act == "click":
+                stats[b_id]["clicks"] += 1
+                
+        best_banner_id = None
+        best_ctr = -1
+        
+        for b_id, metrics in stats.items():
+            views = metrics["views"]
+            clicks = metrics["clicks"]
+            ctr = clicks / views if views > 0 else 0
+            if ctr > best_ctr:
+                best_ctr = ctr
+                best_banner_id = b_id
+                
+        # Encontrar el banner con best_banner_id
+        selected = next((b for b in banners if b['id'] == best_banner_id), random.choice(banners))
+        selected['is_ml_targeted'] = True
+        return selected
+
+    except Exception as e:
+        print(f"Error in ML targeting: {e}")
+        # Fallback de seguridad: devolver el primero o uno random si falla
+        banners_res = client.table("merchant_banners").select("*").eq("is_active", True).execute()
+        if banners_res.data:
+            selected = random.choice(banners_res.data)
+            selected['is_ml_targeted'] = False
+            return selected
+        raise HTTPException(status_code=500, detail="Internal server error")
