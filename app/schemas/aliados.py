@@ -136,6 +136,16 @@ class MarketplaceMerchantOut(BaseModel):
     logo_url: Optional[str] = None
 
 
+class MarketplaceProductListOut(BaseModel):
+    id: str
+    name: str
+    short_description: Optional[str] = None
+    points: int
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    merchant: MarketplaceMerchantOut
+
+
 class MarketplaceProductOut(BaseModel):
     id: str
     name: str
@@ -148,4 +158,6 @@ class MarketplaceProductOut(BaseModel):
     featured: bool = False
     available_from: Optional[datetime] = None
     available_until: Optional[datetime] = None
+    terms_and_conditions: Optional[str] = None
+    redemption_instructions: Optional[str] = None
     merchant: MarketplaceMerchantOut
