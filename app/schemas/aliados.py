@@ -5,6 +5,14 @@ from datetime import datetime
 
 # ── Merchant Products ─────────────────────────────────────────────────────────
 
+class GenerateProductDetailsRequest(BaseModel):
+    name: str
+
+class GenerateProductDetailsOut(BaseModel):
+    description: str
+    category: str
+
+
 class MerchantProductCreate(BaseModel):
     merchant_partner_id: str
     name: str
