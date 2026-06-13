@@ -93,7 +93,7 @@ async def generate_product_details(
     current_user: dict = Depends(get_current_user)
 ):
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
         Eres un experto en marketing y ventas para RECIPE, una plataforma de reciclaje donde estudiantes universitarios canjean "Puntos ECO" por productos ecológicos y beneficios.
         
