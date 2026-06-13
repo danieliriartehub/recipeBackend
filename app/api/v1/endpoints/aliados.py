@@ -26,7 +26,15 @@ from app.schemas.aliados import (
     MerchantBannerCreate,
     MerchantBannerUpdate,
     MerchantBannerOut,
+    GenerateProductDetailsRequest,
+    GenerateProductDetailsOut,
 )
+
+import os
+import google.generativeai as genai
+import json
+
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
 
 router = APIRouter()
 
@@ -75,6 +83,53 @@ async def whoami(
             raise
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no registrado como aliado u operador")
+
+
+# ── IA Generativa: Detalles de Producto ───────────────────────────────────────
+
+@router.post("/generate-product-details", response_model=GenerateProductDetailsOut, summary="Genera descripción y categoría con IA")
+async def generate_product_details(
+    payload: GenerateProductDetailsRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    try:
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        prompt = f"""
+        Eres un experto en marketing y ventas para RECIPE, una plataforma de reciclaje donde estudiantes universitarios canjean "Puntos ECO" por productos ecológicos y beneficios.
+        
+        El aliado comercial quiere registrar un nuevo producto llamado: "{payload.name}".
+        
+        Tu tarea es:
+        1. Redactar una descripción muy atractiva, persuasiva y corta (máximo 2-3 líneas) para este producto, enfocándote en el público universitario. Usa algún emoji.
+        2. Inferir a qué categoría pertenece. Las categorías recomendadas son: Alimentos, Merchandising, Servicios, Hogar y Eco, General. Si no encaja, crea una corta.
+
+        Debes responder ÚNICAMENTE con un objeto JSON con este formato exacto, sin markdown ni bloques de código:
+        {{
+            "description": "Tu descripción aquí",
+            "category": "Tu categoría aquí"
+        }}
+        """
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        
+        data = json.loads(text.strip())
+        return GenerateProductDetailsOut(
+            description=data.get("description", "Descripción generada automáticamente"),
+            category=data.get("category", "General")
+        )
+    except Exception as e:
+        print(f"Error generando detalles con IA: {e}")
+        # Fallback si falla la IA o no hay API key configurada
+        return GenerateProductDetailsOut(
+            description=f"El producto perfecto para tus necesidades: {payload.name}.",
+            category="General"
+        )
 
 
 # ── Merchant: perfil ──────────────────────────────────────────────────────────
