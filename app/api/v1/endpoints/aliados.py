@@ -506,7 +506,7 @@ async def get_active_banners(
     try:
         result = (
             client.table("merchant_banners")
-            .select("*, merchant_partners(id, business_name, is_active)")
+            .select("*, merchant_partners(id, business_name, is_active, website_url)")
             .eq("is_active", True)
             .execute()
         )
@@ -518,6 +518,8 @@ async def get_active_banners(
         partner = row.get("merchant_partners")
         if partner and partner.get("is_active"):
             banner = {k: v for k, v in row.items() if k != "merchant_partners"}
+            banner["business_name"] = partner.get("business_name")
+            banner["link_url"] = banner.get("link_url") or partner.get("website_url")
             banners.append(banner)
             
     return banners
@@ -554,13 +556,15 @@ async def get_targeted_banner(
 ):
     try:
         # 1. Obtener todos los banners activos
-        result = client.table("merchant_banners").select("*, merchant_partners(id, business_name, is_active)").eq("is_active", True).execute()
+        result = client.table("merchant_banners").select("*, merchant_partners(id, business_name, is_active, website_url)").eq("is_active", True).execute()
         
         banners = []
         for row in result.data:
             partner = row.get("merchant_partners")
             if partner and partner.get("is_active"):
                 banner = {k: v for k, v in row.items() if k != "merchant_partners"}
+                banner["business_name"] = partner.get("business_name")
+                banner["link_url"] = banner.get("link_url") or partner.get("website_url")
                 banners.append(banner)
         
         if not banners:
