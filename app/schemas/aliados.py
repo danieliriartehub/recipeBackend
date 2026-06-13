@@ -181,3 +181,9 @@ class MerchantBannerOut(BaseModel):
     is_active: bool
     display_order: int
     created_at: Optional[datetime] = None
+    is_ml_targeted: Optional[bool] = None
+
+class AdTrackingRequest(BaseModel):
+    banner_id: str
+    action: str
+
