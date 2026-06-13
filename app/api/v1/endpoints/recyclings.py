@@ -34,4 +34,19 @@ async def create_recycling(
     data = body.model_dump()
     data["user_id"] = user_id
     result = client.table("recyclings").insert(data).select().single().execute()
+    
+    # Registrar la entrada en la wallet
+    points = data.get("points_earned", 0)
+    if points > 0:
+        wallet_entry = {
+            "user_id": user_id,
+            "points": points,
+            "type": "IN",
+            "title": f"Reciclaje de {data.get('material', 'material')}",
+            "detail": "Reciclaje",
+            "emoji": "♻️",
+            "related_recycling_id": result.data.get("id"),
+        }
+        client.table("wallet_entries").insert(wallet_entry).execute()
+
     return RecyclingOut(**result.data)

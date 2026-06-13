@@ -5,6 +5,14 @@ from datetime import datetime
 
 # ── Merchant Products ─────────────────────────────────────────────────────────
 
+class GenerateProductDetailsRequest(BaseModel):
+    name: str
+
+class GenerateProductDetailsOut(BaseModel):
+    description: str
+    category: str
+
+
 class MerchantProductCreate(BaseModel):
     merchant_partner_id: str
     name: str
@@ -149,3 +157,33 @@ class MarketplaceProductOut(BaseModel):
     available_from: Optional[datetime] = None
     available_until: Optional[datetime] = None
     merchant: MarketplaceMerchantOut
+
+# ── Merchant Banners ──────────────────────────────────────────────────────────
+
+class MerchantBannerCreate(BaseModel):
+    title: Optional[str] = None
+    link_url: Optional[str] = None
+    is_active: bool = True
+    display_order: int = 0
+
+class MerchantBannerUpdate(BaseModel):
+    title: Optional[str] = None
+    link_url: Optional[str] = None
+    is_active: Optional[bool] = None
+    display_order: Optional[int] = None
+
+class MerchantBannerOut(BaseModel):
+    id: str
+    merchant_partner_id: str
+    title: Optional[str] = None
+    banner_url: str
+    link_url: Optional[str] = None
+    is_active: bool
+    display_order: int
+    created_at: Optional[datetime] = None
+    is_ml_targeted: Optional[bool] = None
+
+class AdTrackingRequest(BaseModel):
+    banner_id: str
+    action: str
+
