@@ -14,12 +14,12 @@ async def get_used_coupons_history(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
-    user_id = str(current_user.id)
+    user_id = str(current_user.id) if hasattr(current_user, "id") else str(current_user.get("id"))
     result = (
         client.table("user_coupons")
         .select("*, rewards(*)")
         .eq("user_id", user_id)
-        .or_("status.eq.used,used_at.not.is.null")
+        .or_("status.eq.used,used_at.neq.null")
         .execute()
     )
     
