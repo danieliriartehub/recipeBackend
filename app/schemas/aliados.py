@@ -50,28 +50,28 @@ class MerchantProductOut(BaseModel):
 # ── Merchant Partners ─────────────────────────────────────────────────────────
 
 class MerchantPartnerUpdate(BaseModel):
-    name: Optional[str] = Field(None, alias="business_name")
+    business_name: Optional[str] = None
     tagline: Optional[str] = None
-    description: Optional[str] = Field(None, alias="profile_description")
+    profile_description: Optional[str] = None
     logo_url: Optional[str] = None
-    cover_url: Optional[str] = Field(None, alias="banner_url")
+    banner_url: Optional[str] = None
     brand_color: Optional[str] = None
     category: Optional[str] = None
-    email: Optional[str] = Field(None, alias="contact_email")
-    website: Optional[str] = Field(None, alias="website_url")
+    contact_email: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class MerchantPartnerOut(BaseModel):
     id: str
-    business_name: Optional[str] = Field(None, validation_alias="name")
+    business_name: Optional[str] = None
     tagline: Optional[str] = None
-    profile_description: Optional[str] = Field(None, validation_alias="description")
+    profile_description: Optional[str] = None
     logo_url: Optional[str] = None
-    banner_url: Optional[str] = Field(None, validation_alias="cover_url")
+    banner_url: Optional[str] = None
     brand_color: Optional[str] = None
     category: Optional[str] = None
-    contact_email: Optional[str] = Field(None, validation_alias="email")
-    website_url: Optional[str] = Field(None, validation_alias="website")
+    contact_email: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class MerchantUserOut(BaseModel):
