@@ -159,6 +159,8 @@ async def get_merchant_me(
     return MerchantUserOut(**result.data)
 
 
+from postgrest.exceptions import APIError
+
 @router.patch("/partner/me", response_model=MerchantPartnerOut, summary="Actualizar datos del partner logueado")
 async def update_my_merchant_partner(
     body: MerchantPartnerUpdate,
@@ -175,14 +177,17 @@ async def update_my_merchant_partner(
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
     
-    result = (
-        client.table("merchant_partners")
-        .update(updates)
-        .eq("id", partner_id)
-        .select()
-        .single()
-        .execute()
-    )
+    try:
+        result = (
+            client.table("merchant_partners")
+            .update(updates)
+            .eq("id", partner_id)
+            .select()
+            .single()
+            .execute()
+        )
+    except APIError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Database error: {e.message}")
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner no encontrado")
     return MerchantPartnerOut(**result.data)
