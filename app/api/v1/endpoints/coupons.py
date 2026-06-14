@@ -193,16 +193,21 @@ async def validate_coupon(
             client.table("merchant_redemptions")
             .select(
                 "id, points_spent, redemption_code, status, expires_at, "
-                "merchant_products!inner(id, name, merchant_partner_id, merchant_partners(business_name))"
+                "merchant_products(id, name, merchant_partner_id, merchant_partners(business_name))"
             )
-            .eq("redemption_code", code.upper())
+            .ilike("redemption_code", code.strip())
             .single()
             .execute()
         )
-    except Exception:
+    except Exception as e:
+        if hasattr(e, "code") and e.code == "PGRST116":
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No se encontró el código ingresado."
+            )
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No se encontró el código ingresado."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"DB Error: {str(e)}"
         )
 
     if not result.data:
@@ -245,13 +250,15 @@ async def redeem_coupon(
     try:
         result = (
             client.table("merchant_redemptions")
-            .select("id, status, merchant_products!inner(merchant_partner_id)")
+            .select("id, status, merchant_products(merchant_partner_id)")
             .eq("id", payload.redemption_id)
             .single()
             .execute()
         )
-    except Exception:
-        raise HTTPException(status_code=404, detail="No se encontró el cupón.")
+    except Exception as e:
+        if hasattr(e, "code") and e.code == "PGRST116":
+            raise HTTPException(status_code=404, detail="No se encontró el cupón.")
+        raise HTTPException(status_code=500, detail=f"DB Error: {str(e)}")
 
     if not result.data:
         raise HTTPException(status_code=404, detail="No se encontró el cupón.")
