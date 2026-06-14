@@ -182,15 +182,13 @@ async def update_my_merchant_partner(
             client.table("merchant_partners")
             .update(updates)
             .eq("id", partner_id)
-            .select()
-            .single()
             .execute()
         )
     except APIError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Database error: {e.message}")
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner no encontrado")
-    return MerchantPartnerOut(**result.data)
+    return MerchantPartnerOut(**result.data[0])
 
 
 @router.patch("/partner/{partner_id}", response_model=MerchantPartnerOut, summary="Actualizar datos del partner")
@@ -207,13 +205,11 @@ async def update_merchant_partner(
         client.table("merchant_partners")
         .update(updates)
         .eq("id", partner_id)
-        .select()
-        .single()
         .execute()
     )
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner no encontrado")
-    return MerchantPartnerOut(**result.data)
+    return MerchantPartnerOut(**result.data[0])
 
 
 
@@ -516,13 +512,11 @@ async def update_partner_banner(
         .update(updates)
         .eq("id", banner_id)
         .eq("merchant_partner_id", partner_id)
-        .select()
-        .single()
         .execute()
     )
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Banner no encontrado")
-    return MerchantBannerOut(**result.data)
+    return MerchantBannerOut(**result.data[0])
 
 @router.delete("/partner/{partner_id}/banners/{banner_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Eliminar banner")
 async def delete_partner_banner(
