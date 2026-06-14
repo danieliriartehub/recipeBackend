@@ -50,28 +50,28 @@ class MerchantProductOut(BaseModel):
 # ── Merchant Partners ─────────────────────────────────────────────────────────
 
 class MerchantPartnerUpdate(BaseModel):
-    name: Optional[str] = None
+    business_name: Optional[str] = None
     tagline: Optional[str] = None
-    description: Optional[str] = None
+    profile_description: Optional[str] = None
     logo_url: Optional[str] = None
-    cover_url: Optional[str] = None
+    banner_url: Optional[str] = None
     brand_color: Optional[str] = None
     category: Optional[str] = None
-    email: Optional[str] = None
-    website: Optional[str] = None
+    contact_email: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class MerchantPartnerOut(BaseModel):
     id: str
-    name: Optional[str] = None
+    business_name: Optional[str] = None
     tagline: Optional[str] = None
-    description: Optional[str] = None
+    profile_description: Optional[str] = None
     logo_url: Optional[str] = None
-    cover_url: Optional[str] = None
+    banner_url: Optional[str] = None
     brand_color: Optional[str] = None
     category: Optional[str] = None
-    email: Optional[str] = None
-    website: Optional[str] = None
+    contact_email: Optional[str] = None
+    website_url: Optional[str] = None
 
 
 class MerchantUserOut(BaseModel):
