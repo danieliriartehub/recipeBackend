@@ -1,10 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from supabase import Client
 from typing import List
+from datetime import datetime, timezone
 
 from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
-from app.schemas.coupons import MerchantCouponHistoryOut
+from app.schemas.coupons import (
+    MerchantCouponHistoryOut,
+    CouponValidateOut,
+    CouponRedeemRequest,
+    CouponRedeemOut
+)
 
 router = APIRouter()
 
@@ -166,3 +172,112 @@ async def get_coupons_expired(
         history.append(history_item)
         
     return history
+
+
+@router.get("/validate/{code}", response_model=CouponValidateOut, summary="Validar código de cupón para aliados")
+async def validate_coupon(
+    code: str,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    try:
+        user_res = client.table("merchant_users").select("merchant_partner_id").eq("id", current_user.id).single().execute()
+        if not user_res.data:
+            raise HTTPException(status_code=403, detail="No autorizado")
+        partner_id = user_res.data["merchant_partner_id"]
+    except Exception:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    try:
+        result = (
+            client.table("merchant_redemptions")
+            .select(
+                "id, points_spent, redemption_code, status, expires_at, "
+                "merchant_products!inner(id, name, merchant_partner_id, merchant_partners(business_name))"
+            )
+            .eq("redemption_code", code.upper())
+            .single()
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No se encontró el código ingresado."
+        )
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="No se encontró el código ingresado.")
+
+    row = result.data
+    product = row.get("merchant_products")
+    
+    if product.get("merchant_partner_id") != partner_id:
+        raise HTTPException(status_code=403, detail="No autorizado para consultar este cupón.")
+
+    partner = product.get("merchant_partners", {})
+    
+    return CouponValidateOut(
+        redemption_id=row.get("id"),
+        product_id=product.get("id"),
+        product_name=product.get("name"),
+        partner_name=partner.get("business_name", ""),
+        points_spent=row.get("points_spent"),
+        redemption_code=row.get("redemption_code"),
+        status=row.get("status"),
+        expires_at=row.get("expires_at")
+    )
+
+
+@router.post("/redeem", response_model=CouponRedeemOut, summary="Canjear cupón")
+async def redeem_coupon(
+    payload: CouponRedeemRequest,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    try:
+        user_res = client.table("merchant_users").select("merchant_partner_id").eq("id", current_user.id).single().execute()
+        if not user_res.data:
+            raise HTTPException(status_code=403, detail="No autorizado")
+        partner_id = user_res.data["merchant_partner_id"]
+    except Exception:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    try:
+        result = (
+            client.table("merchant_redemptions")
+            .select("id, status, merchant_products!inner(merchant_partner_id)")
+            .eq("id", payload.redemption_id)
+            .single()
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail="No se encontró el cupón.")
+
+    if not result.data:
+        raise HTTPException(status_code=404, detail="No se encontró el cupón.")
+
+    row = result.data
+    
+    if row.get("merchant_products", {}).get("merchant_partner_id") != partner_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    coupon_status = row.get("status")
+    if coupon_status == "redeemed":
+        raise HTTPException(status_code=400, detail="Este cupón ya fue canjeado.")
+    if coupon_status == "expired":
+        raise HTTPException(status_code=400, detail="Este cupón ha expirado.")
+    if coupon_status == "cancelled":
+        raise HTTPException(status_code=400, detail="Este cupón ha sido cancelado.")
+    if coupon_status != "pending":
+        raise HTTPException(status_code=400, detail="El cupón no está disponible para canje.")
+
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        client.table("merchant_redemptions").update({
+            "status": "redeemed",
+            "redeemed_at": now_iso
+        }).eq("id", payload.redemption_id).execute()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al registrar canje: {str(e)}")
+
+    return CouponRedeemOut(success=True, message="Canje registrado correctamente.")
