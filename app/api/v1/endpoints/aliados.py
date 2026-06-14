@@ -165,7 +165,8 @@ async def update_my_merchant_partner(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
-    user_res = client.table("merchant_users").select("merchant_partner_id").eq("id", current_user.id).single().execute()
+    user_id = str(current_user.id)
+    user_res = client.table("merchant_users").select("merchant_partner_id").eq("id", user_id).single().execute()
     if not user_res.data or not user_res.data.get("merchant_partner_id"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
     partner_id = user_res.data["merchant_partner_id"]
