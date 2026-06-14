@@ -159,6 +159,34 @@ async def get_merchant_me(
     return MerchantUserOut(**result.data)
 
 
+@router.patch("/partner/me", response_model=MerchantPartnerOut, summary="Actualizar datos del partner logueado")
+async def update_my_merchant_partner(
+    body: MerchantPartnerUpdate,
+    current_user: dict = Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    user_res = client.table("merchant_users").select("merchant_partner_id").eq("id", current_user.id).single().execute()
+    if not user_res.data or not user_res.data.get("merchant_partner_id"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado")
+    partner_id = user_res.data["merchant_partner_id"]
+
+    updates = body.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
+    
+    result = (
+        client.table("merchant_partners")
+        .update(updates)
+        .eq("id", partner_id)
+        .select()
+        .single()
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner no encontrado")
+    return MerchantPartnerOut(**result.data)
+
+
 @router.patch("/partner/{partner_id}", response_model=MerchantPartnerOut, summary="Actualizar datos del partner")
 async def update_merchant_partner(
     partner_id: str,
@@ -180,6 +208,7 @@ async def update_merchant_partner(
     if not result.data:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner no encontrado")
     return MerchantPartnerOut(**result.data)
+
 
 
 # ── Merchant: productos ───────────────────────────────────────────────────────
