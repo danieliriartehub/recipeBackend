@@ -24,4 +24,5 @@ class MerchantCouponHistoryOut(BaseModel):
     points_spent: int
     redemption_code: str
     status: str
-    redeemed_at: datetime
+    redeemed_at: Optional[datetime] = None
+    expires_at: Optional[datetime] = None
