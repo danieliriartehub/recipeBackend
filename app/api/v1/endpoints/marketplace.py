@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 from typing import Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app.schemas.aliados import MarketplaceProductOut, MarketplaceProductListOut, MarketplaceMerchantOut, MerchantPartnerOut
 
 @router.get("/merchants", response_model=List[MarketplaceMerchantOut], summary="Obtener lista de aliados activos")
@@ -260,6 +260,12 @@ async def redeem_product(
         
     # 5. Generar Canje (Cupón)
     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    
+    expiration_days = product.get("expiration_days")
+    expires_at = None
+    if expiration_days is not None:
+        expires_at = (current_time_dt + timedelta(days=expiration_days)).isoformat()
+        
     redemption_data = {
         "user_id": user_id,
         "merchant_product_id": product_id,
@@ -267,6 +273,10 @@ async def redeem_product(
         "redemption_code": code,
         "status": "pending"
     }
+    
+    if expires_at:
+        redemption_data["expires_at"] = expires_at
+        
     redemption_result = client.table("merchant_redemptions").insert(redemption_data).execute()
     
     if not redemption_result.data:
