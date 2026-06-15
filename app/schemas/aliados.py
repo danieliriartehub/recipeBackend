@@ -152,6 +152,7 @@ class MarketplaceProductListOut(BaseModel):
     name: str
     short_description: Optional[str] = None
     points: int
+    stock: Optional[int] = None
     category: Optional[str] = None
     image_url: Optional[str] = None
     expiration_days: Optional[int] = None
