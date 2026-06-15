@@ -22,6 +22,7 @@ class MerchantProductCreate(BaseModel):
     image_url: Optional[str] = None
     category: Optional[str] = None
     is_active: bool = True
+    expiration_days: Optional[int] = None
 
 
 class MerchantProductUpdate(BaseModel):
@@ -32,6 +33,7 @@ class MerchantProductUpdate(BaseModel):
     image_url: Optional[str] = None
     category: Optional[str] = None
     is_active: Optional[bool] = None
+    expiration_days: Optional[int] = None
 
 
 class MerchantProductOut(BaseModel):
@@ -44,6 +46,7 @@ class MerchantProductOut(BaseModel):
     image_url: Optional[str] = None
     category: Optional[str] = None
     is_active: Optional[bool] = None
+    expiration_days: Optional[int] = None
     created_at: Optional[datetime] = None
 
 
@@ -151,6 +154,7 @@ class MarketplaceProductListOut(BaseModel):
     points: int
     category: Optional[str] = None
     image_url: Optional[str] = None
+    expiration_days: Optional[int] = None
     merchant: MarketplaceMerchantOut
 
 
@@ -166,6 +170,7 @@ class MarketplaceProductOut(BaseModel):
     featured: bool = False
     available_from: Optional[datetime] = None
     available_until: Optional[datetime] = None
+    expiration_days: Optional[int] = None
     terms_and_conditions: Optional[str] = None
     redemption_instructions: Optional[str] = None
     merchant: MarketplaceMerchantOut
