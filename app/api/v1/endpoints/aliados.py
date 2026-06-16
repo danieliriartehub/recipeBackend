@@ -232,43 +232,6 @@ async def get_products(
     return [MerchantProductOut(**r) for r in (result.data or [])]
 
 
-@router.get("/productos", response_model=List[MarketplaceProductOut], summary="Catálogo consolidado del marketplace")
-async def get_marketplace_products(
-    merchant_partner_id: Optional[str] = None,
-    category: Optional[str] = None,
-    featured: Optional[bool] = None,
-    client: Client = Depends(get_supabase_admin_client),
-):
-    current_time = datetime.now(timezone.utc).isoformat()
-    
-    query = (
-        client.table("merchant_products")
-        .select("*, merchant_partners!inner(*)")
-        .eq("is_active", True)
-        .eq("status", "active")
-        .eq("merchant_partners.is_active", True)
-        .lte("available_from", current_time)
-        .or_(f"available_until.is.null,available_until.gte.{current_time}")
-    )
-    
-    if merchant_partner_id:
-        query = query.eq("merchant_partner_id", merchant_partner_id)
-    if category:
-        query = query.eq("category", category)
-    if featured is not None:
-        query = query.eq("featured", featured)
-        
-    result = query.execute()
-    
-    data = []
-    for r in (result.data or []):
-        if "merchant_partners" in r:
-            r["merchant"] = r.pop("merchant_partners")
-        data.append(MarketplaceProductOut(**r))
-        
-    return data
-
-
 @router.post("/products", response_model=MerchantProductOut, status_code=status.HTTP_201_CREATED, summary="Crear producto")
 async def create_product(
     body: MerchantProductCreate,

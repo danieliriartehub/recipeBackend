@@ -41,7 +41,7 @@ async def create_recycling(
         wallet_entry = {
             "user_id": user_id,
             "points": points,
-            "type": "IN",
+            "type": "earned",
             "title": f"Reciclaje de {data.get('material', 'material')}",
             "detail": "Reciclaje",
             "emoji": "♻️",
