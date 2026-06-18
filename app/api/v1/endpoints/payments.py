@@ -1,13 +1,15 @@
 """
-payments.py — Endpoints de RECIPE Plus / IziPay
+payments.py — Endpoints de RECIPE Plus / IziPay (micuentaweb.pe)
 
-Flujo con Link de Pago:
-  1. El alumno paga en la página alojada de IziPay
-  2. IziPay hace POST a /api/v1/payments/webhook con el resultado
-  3. Este endpoint verifica la firma HMAC-SHA256 y activa is_plus en Supabase
+Formato real del webhook de micuentaweb.pe (IziPay Perú):
+  - El IPN envía un POST con form-data (application/x-www-form-urlencoded)
+  - Campos: kr-answer (JSON string) + kr-hash (firma HMAC-SHA256)
+  - Verificación: HMAC-SHA256(kr-answer, HMAC_KEY) == kr-hash
 
-Endpoint adicional:
-  GET /api/v1/payments/subscription/me — devuelve el estado de suscripción
+Credenciales en Railway:
+  IZIPAY_HMAC_KEY     = R5PwUUgemJrvPzFxnLWwOYEIyjiyys7OxWnL0C8mdoMjO  (producción)
+  IZIPAY_SHOP_USERNAME = 61792228
+  IZIPAY_SHOP_PASSWORD = prodpassword_WJe5R8c1V2KPKu7J95Q9OC5nWsMJp0ZR7f9pExaJgBv1U
 """
 
 import hashlib
@@ -15,6 +17,7 @@ import hmac
 import json
 import logging
 from datetime import datetime, timezone, timedelta
+from urllib.parse import parse_qs
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from supabase import Client
@@ -22,60 +25,60 @@ from supabase import Client
 from app.core.config import settings
 from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
-from app.schemas.payments import SubscriptionOut
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# ─── Constantes ──────────────────────────────────────────────────────────────
+# ─── Constantes ───────────────────────────────────────────────────────────────
 PLUS_PRICE_SOLES = 5.99
 PLUS_DURATION_DAYS = 30
 
 
-# ─── Helper: verificar firma HMAC de IziPay ──────────────────────────────────
+# ─── Helper: verificar firma HMAC de micuentaweb.pe ───────────────────────────
 
-def _verify_izipay_signature(payload_str: str, received_signature: str) -> bool:
+def _verify_signature(kr_answer: str, kr_hash: str) -> bool:
     """
-    IziPay firma el cuerpo del webhook con HMAC-SHA256 usando la clave HMAC
-    del comercio. Verificamos que el hash coincida antes de procesar el pago.
+    micuentaweb.pe (IziPay) envía:
+      - kr-answer: string JSON con los datos de la transacción
+      - kr-hash:   HMAC-SHA256(kr_answer, HMAC_KEY) en hexadecimal
 
-    Si IZIPAY_HMAC_KEY no está configurada (durante desarrollo / sin credenciales),
-    se omite la verificación y se loguea una advertencia.
+    Verificamos que el hash recibido sea válido antes de procesar el pago.
+    Si IZIPAY_HMAC_KEY no está configurada, modo permisivo (solo desarrollo).
     """
-    hmac_key = getattr(settings, "IZIPAY_HMAC_KEY", None)
+    hmac_key = getattr(settings, "IZIPAY_HMAC_KEY", "").strip()
 
     if not hmac_key:
         logger.warning(
-            "[PAYMENTS] IZIPAY_HMAC_KEY no configurada — "
-            "verificación de firma omitida. Configura la variable en Railway."
+            "[PAYMENTS] IZIPAY_HMAC_KEY no configurada — verificación omitida. "
+            "Agrégala en Railway antes de producción."
         )
-        return True  # Permisivo hasta tener las credenciales reales
+        return True  # Permisivo en desarrollo
 
     expected = hmac.new(
         hmac_key.encode("utf-8"),
-        payload_str.encode("utf-8"),
+        kr_answer.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
-    return hmac.compare_digest(expected, received_signature)
+    return hmac.compare_digest(expected.lower(), kr_hash.lower())
 
 
-# ─── Helper: activar RECIPE Plus en Supabase ─────────────────────────────────
+# ─── Helper: activar RECIPE Plus en Supabase ──────────────────────────────────
 
-def _activate_plus(client: Client, user_id: str, order_id: str, transaction_uuid: str) -> None:
-    """Actualiza profiles y crea/actualiza registro en subscriptions."""
+def _activate_plus(
+    client: Client, user_id: str, order_id: str, transaction_uuid: str
+) -> None:
+    """Marca is_plus = True en profiles y guarda registro en subscriptions."""
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(days=PLUS_DURATION_DAYS)
 
-    # 1. Actualizar profiles
     client.table("profiles").update({
         "is_plus": True,
         "plus_expires_at": expires_at.isoformat(),
         "updated_at": now.isoformat(),
     }).eq("id", user_id).execute()
 
-    # 2. Registrar en subscriptions (historial)
     client.table("subscriptions").upsert({
         "user_id": user_id,
         "status": "active",
@@ -88,103 +91,148 @@ def _activate_plus(client: Client, user_id: str, order_id: str, transaction_uuid
         "updated_at": now.isoformat(),
     }, on_conflict="user_id").execute()
 
-    logger.info(f"[PAYMENTS] RECIPE Plus activado para user_id={user_id} hasta {expires_at.date()}")
+    logger.info(
+        f"[PAYMENTS] ✅ RECIPE Plus activado para user_id={user_id} "
+        f"hasta {expires_at.strftime('%Y-%m-%d')}"
+    )
 
 
-# ─── POST /webhook — Callback de IziPay ──────────────────────────────────────
+# ─── Helper: buscar user_id por email en Supabase Auth ────────────────────────
+
+def _find_user_by_email(client: Client, email: str) -> str | None:
+    try:
+        result = client.auth.admin.list_users()
+        for user in result:
+            if user.email == email:
+                return str(user.id)
+    except Exception as e:
+        logger.error(f"[PAYMENTS] Error buscando usuario por email {email}: {e}")
+    return None
+
+
+# ─── POST /webhook — IPN de micuentaweb.pe (IziPay) ───────────────────────────
 
 @router.post(
     "/webhook",
     status_code=status.HTTP_200_OK,
-    summary="Webhook IziPay — activa RECIPE Plus tras pago exitoso",
-    include_in_schema=False,  # Ocultar de docs públicas por seguridad
+    summary="Webhook IPN de IziPay — activa RECIPE Plus tras pago exitoso",
+    include_in_schema=False,
 )
 async def izipay_webhook(
     request: Request,
     client: Client = Depends(get_supabase_admin_client),
 ):
     """
-    IziPay realiza un POST a este endpoint cuando el pago es procesado.
-    Verifica la firma HMAC y activa is_plus en el perfil del alumno.
+    micuentaweb.pe envía el resultado del pago como form-data con:
+      - kr-answer: JSON string con detalles de la transacción
+      - kr-hash:   firma HMAC-SHA256 del kr-answer
 
-    El orderId debe seguir el formato: RECIPE-PLUS-{user_id}
-    (lo configuras al crear el link de pago en el dashboard de IziPay)
+    Pasos:
+      1. Parsear form-data
+      2. Verificar firma HMAC
+      3. Extraer orderStatus del kr-answer
+      4. Si PAID → identificar alumno por email → activar RECIPE Plus
     """
-    raw_body = await request.body()
-    payload_str = raw_body.decode("utf-8")
+    # ── 1. Parsear el body (form-data de micuentaweb.pe) ─────────────────────
+    content_type = request.headers.get("content-type", "")
+    kr_answer = ""
+    kr_hash = ""
 
-    # ── 1. Verificar firma HMAC ──────────────────────────────────────────────
-    signature = request.headers.get("kr-hash", "") or request.headers.get("x-izipay-signature", "")
-    if not _verify_izipay_signature(payload_str, signature):
-        logger.warning("[PAYMENTS] Firma HMAC inválida — webhook rechazado")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Firma inválida",
-        )
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form = await request.form()
+        kr_answer = form.get("kr-answer", "")
+        kr_hash = form.get("kr-hash", "")
+    else:
+        # Algunos setups envían JSON
+        raw = await request.body()
+        body_str = raw.decode("utf-8")
+        try:
+            data = json.loads(body_str)
+            kr_answer = data.get("kr-answer", "")
+            kr_hash = data.get("kr-hash", "")
+        except json.JSONDecodeError:
+            # Intentar como form-urlencoded manual
+            parsed = parse_qs(body_str)
+            kr_answer = parsed.get("kr-answer", [""])[0]
+            kr_hash = parsed.get("kr-hash", [""])[0]
 
-    # ── 2. Parsear el payload ────────────────────────────────────────────────
+    if not kr_answer:
+        logger.error("[PAYMENTS] Webhook recibido sin kr-answer")
+        raise HTTPException(status_code=400, detail="Payload inválido: falta kr-answer")
+
+    logger.info(f"[PAYMENTS] Webhook recibido — kr-hash presente: {bool(kr_hash)}")
+
+    # ── 2. Verificar firma HMAC ───────────────────────────────────────────────
+    if not _verify_signature(kr_answer, kr_hash):
+        logger.warning("[PAYMENTS] ❌ Firma HMAC inválida — webhook rechazado")
+        raise HTTPException(status_code=401, detail="Firma inválida")
+
+    # ── 3. Parsear kr-answer ──────────────────────────────────────────────────
     try:
-        data = json.loads(payload_str)
+        answer: dict = json.loads(kr_answer)
     except json.JSONDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Payload inválido",
-        )
+        logger.error(f"[PAYMENTS] kr-answer no es JSON válido: {kr_answer[:200]}")
+        raise HTTPException(status_code=400, detail="kr-answer inválido")
 
-    order_status = data.get("orderStatus") or data.get("kr-answer", {}).get("orderStatus", "")
-    order_id = data.get("orderId") or data.get("kr-answer", {}).get("orderId", "")
-    transaction_uuid = data.get("uuid") or data.get("kr-answer", {}).get("transactions", [{}])[0].get("uuid", "")
+    order_status = answer.get("orderStatus", "")
+    order_id = answer.get("orderId", "")
+    transactions = answer.get("transactions", [])
+    transaction_uuid = transactions[0].get("uuid", "") if transactions else ""
 
-    logger.info(f"[PAYMENTS] Webhook recibido — orderStatus={order_status} orderId={order_id}")
+    logger.info(
+        f"[PAYMENTS] orderStatus={order_status} | orderId={order_id} | "
+        f"transactions={len(transactions)}"
+    )
 
-    # ── 3. Solo procesar pagos aprobados ────────────────────────────────────
+    # ── 4. Solo procesar pagos aprobados ──────────────────────────────────────
     if order_status != "PAID":
-        logger.info(f"[PAYMENTS] Estado no es PAID ({order_status}) — ignorando")
-        return {"received": True, "action": "ignored"}
+        logger.info(f"[PAYMENTS] Estado '{order_status}' — no se activa PLUS")
+        return {"received": True, "action": "ignored", "orderStatus": order_status}
 
-    # ── 4. Extraer user_id del orderId ──────────────────────────────────────
-    # Formato esperado: RECIPE-PLUS-{user_id}
-    # Si usas el link genérico de IziPay, el orderId viene del sistema de ellos.
-    # En ese caso, busca el email del comprador en el payload para mapear.
+    # ── 5. Identificar al alumno ──────────────────────────────────────────────
     user_id = None
 
+    # Opción A: el orderId fue generado con formato RECIPE-PLUS-{user_id}
     if order_id and order_id.startswith("RECIPE-PLUS-"):
-        user_id = order_id.replace("RECIPE-PLUS-", "")
-    else:
-        # Intentar extraer email del cliente desde el payload de IziPay
-        customer_email = (
-            data.get("customer", {}).get("email")
-            or data.get("kr-answer", {}).get("customer", {}).get("email")
-        )
+        user_id = order_id.replace("RECIPE-PLUS-", "").strip()
+        logger.info(f"[PAYMENTS] user_id extraído del orderId: {user_id}")
+
+    # Opción B: buscar por email del cliente (link de pago genérico)
+    if not user_id:
+        customer = answer.get("customer", {})
+        customer_email = customer.get("email", "").strip()
         if customer_email:
-            # Buscar user_id en Supabase por email
-            res = client.table("profiles").select("id").eq(
-                "id",
-                client.auth.admin.get_user_by_email(customer_email).user.id
-                if customer_email else None
-            ).execute()
-            if res.data:
-                user_id = res.data[0]["id"]
+            logger.info(f"[PAYMENTS] Buscando usuario por email: {customer_email}")
+            user_id = _find_user_by_email(client, customer_email)
 
     if not user_id:
-        logger.error(f"[PAYMENTS] No se pudo identificar al usuario para orderId={order_id}")
-        # Retornamos 200 para que IziPay no reintente, pero logueamos el error
-        return {"received": True, "action": "user_not_found", "order_id": order_id}
+        logger.error(
+            f"[PAYMENTS] ⚠️ No se pudo identificar al alumno. "
+            f"orderId={order_id} | answer={kr_answer[:300]}"
+        )
+        # Retornamos 200 para que IziPay no reintente el webhook
+        return {
+            "received": True,
+            "action": "user_not_found",
+            "order_id": order_id,
+        }
 
-    # ── 5. Activar RECIPE Plus ───────────────────────────────────────────────
+    # ── 6. Activar RECIPE Plus ────────────────────────────────────────────────
     try:
         _activate_plus(client, user_id, order_id, transaction_uuid)
     except Exception as e:
-        logger.error(f"[PAYMENTS] Error activando PLUS para user_id={user_id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error activando suscripción",
-        )
+        logger.error(f"[PAYMENTS] ❌ Error activando PLUS para user_id={user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error activando suscripción")
 
-    return {"received": True, "action": "plus_activated", "user_id": user_id}
+    return {
+        "received": True,
+        "action": "plus_activated",
+        "user_id": user_id,
+        "expires_days": PLUS_DURATION_DAYS,
+    }
 
 
-# ─── GET /subscription/me — Estado de suscripción del alumno ─────────────────
+# ─── GET /subscription/me — Estado de suscripción ─────────────────────────────
 
 @router.get(
     "/subscription/me",
@@ -194,33 +242,29 @@ async def get_my_subscription(
     current_user=Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
-    """
-    Devuelve si el alumno tiene RECIPE Plus activo y cuándo expira.
-    El frontend usa este endpoint para mostrar el badge ACTIVO en el perfil.
-    """
     user_id = str(current_user.id)
 
-    profile_res = client.table("profiles").select(
+    res = client.table("profiles").select(
         "is_plus, plus_expires_at"
     ).eq("id", user_id).single().execute()
 
-    if not profile_res.data:
+    if not res.data:
         raise HTTPException(status_code=404, detail="Perfil no encontrado")
 
-    is_plus = profile_res.data.get("is_plus", False)
-    plus_expires_at = profile_res.data.get("plus_expires_at")
+    is_plus = res.data.get("is_plus", False)
+    plus_expires_at = res.data.get("plus_expires_at")
 
-    # Auto-expirar si ya pasó la fecha
+    # Auto-expirar si la fecha ya pasó
     if is_plus and plus_expires_at:
         expires_dt = datetime.fromisoformat(plus_expires_at.replace("Z", "+00:00"))
         if expires_dt < datetime.now(timezone.utc):
-            # Desactivar automáticamente
             client.table("profiles").update({
                 "is_plus": False,
                 "updated_at": datetime.now(timezone.utc).isoformat(),
             }).eq("id", user_id).execute()
             is_plus = False
-            logger.info(f"[PAYMENTS] PLUS expirado y desactivado para user_id={user_id}")
+            plus_expires_at = None
+            logger.info(f"[PAYMENTS] PLUS expirado — desactivado para user_id={user_id}")
 
     return {
         "is_plus": is_plus,
@@ -229,11 +273,11 @@ async def get_my_subscription(
     }
 
 
-# ─── POST /subscription/activate — Activación manual (solo admin/debug) ──────
+# ─── POST /subscription/activate/{user_id} — Activación manual ───────────────
 
 @router.post(
     "/subscription/activate/{user_id}",
-    summary="[Admin] Activar RECIPE Plus manualmente para un usuario",
+    summary="[Admin] Activar RECIPE Plus manualmente",
     include_in_schema=False,
 )
 async def activate_plus_manual(
@@ -241,10 +285,8 @@ async def activate_plus_manual(
     client: Client = Depends(get_supabase_admin_client),
 ):
     """
-    Endpoint de emergencia para activar RECIPE Plus manualmente desde Supabase
-    o desde una herramienta de admin, sin pasar por el webhook de IziPay.
-    NO requiere auth para facilitar activaciones manuales tras verificar pago.
-    IMPORTANTE: Proteger con API Key antes de producción final.
+    Activa RECIPE Plus manualmente para un user_id dado.
+    Útil mientras se configura el webhook o para activaciones de soporte.
     """
     try:
         _activate_plus(client, user_id, "MANUAL", "MANUAL")

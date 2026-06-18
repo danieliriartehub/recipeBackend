@@ -12,9 +12,11 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str
     SUPABASE_SERVICE_KEY: str
 
-    # IziPay — clave HMAC para verificar firma del webhook
-    # Obtenla desde: Panel de Comercio IziPay → Configuración → Claves API
-    IZIPAY_HMAC_KEY: str = ""  # Vacía = modo permisivo (solo para desarrollo)
+    # IziPay / micuentaweb.pe — Credenciales del comercio
+    # Panel: https://panel.micuentaweb.pe → Desarrolladores → Claves
+    IZIPAY_HMAC_KEY: str = ""        # Clave HMAC-SHA256 (verifica firma del webhook)
+    IZIPAY_SHOP_USERNAME: str = ""   # Usuario / Identificador de tienda (ej: 61792228)
+    IZIPAY_SHOP_PASSWORD: str = ""   # Contraseña de producción
 
     # CORS – separar múltiples orígenes con coma en .env, ej: http://localhost:3000,https://mifrontend.com
     ALLOWED_ORIGINS: str = "http://localhost:3000"
