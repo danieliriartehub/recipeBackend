@@ -13,6 +13,7 @@ from app.api.v1.endpoints import (
     aliados,
     simulator,
     coupons,
+    payments,
 )
 
 api_router = APIRouter()
@@ -30,3 +31,4 @@ api_router.include_router(missions.router,      prefix="/missions",      tags=["
 api_router.include_router(aliados.router,       prefix="/aliados",       tags=["aliados"])
 api_router.include_router(simulator.router,     prefix="/simulator",     tags=["simulator"])
 api_router.include_router(coupons.router,       prefix="/coupons",       tags=["coupons"])
+api_router.include_router(payments.router,      prefix="/payments",      tags=["payments"])
