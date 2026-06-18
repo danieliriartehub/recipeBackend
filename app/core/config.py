@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str
     SUPABASE_SERVICE_KEY: str
 
+    # IziPay — clave HMAC para verificar firma del webhook
+    # Obtenla desde: Panel de Comercio IziPay → Configuración → Claves API
+    IZIPAY_HMAC_KEY: str = ""  # Vacía = modo permisivo (solo para desarrollo)
+
     # CORS – separar múltiples orígenes con coma en .env, ej: http://localhost:3000,https://mifrontend.com
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
