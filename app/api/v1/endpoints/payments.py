@@ -25,6 +25,10 @@ from supabase import Client
 from app.core.config import settings
 from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
+from app.schemas.payments import CreateSessionResponse
+
+import httpx
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +98,82 @@ def _activate_plus(
     logger.info(
         f"[PAYMENTS] ✅ RECIPE Plus activado para user_id={user_id} "
         f"hasta {expires_at.strftime('%Y-%m-%d')}"
+    )
+
+
+# ─── POST /create-session — Generar formToken para Pop-In ─────────────────────
+
+@router.post(
+    "/create-session",
+    response_model=CreateSessionResponse,
+    summary="Genera un formToken para renderizar el Pop-Up de pago de IziPay",
+)
+async def create_payment_session(
+    current_user=Depends(get_current_user),
+    client: Client = Depends(get_supabase_admin_client),
+):
+    """
+    Llama a la API REST de IziPay (micuentaweb.pe) para generar un formToken.
+    Se utiliza el Auth Basic con usuario y password de producción.
+    """
+    user_id = str(current_user.id)
+    username = getattr(settings, "IZIPAY_SHOP_USERNAME", "").strip()
+    password = getattr(settings, "IZIPAY_SHOP_PASSWORD", "").strip()
+
+    if not username or not password:
+        logger.error("[PAYMENTS] Faltan IZIPAY_SHOP_USERNAME o IZIPAY_SHOP_PASSWORD")
+        raise HTTPException(status_code=500, detail="Credenciales de IziPay no configuradas")
+
+    # orderId único por intento
+    order_id = f"RECIPE-PLUS-{user_id}-{int(datetime.now().timestamp())}"
+
+    # Monto en céntimos (S/ 5.99 = 599)
+    amount_cents = int(PLUS_PRICE_SOLES * 100)
+
+    payload = {
+        "amount": amount_cents,
+        "currency": "PEN",
+        "orderId": order_id,
+        "customer": {
+            "email": current_user.email,
+        }
+    }
+
+    auth_string = f"{username}:{password}"
+    auth_b64 = base64.b64encode(auth_string.encode("utf-8")).decode("utf-8")
+
+    async with httpx.AsyncClient() as http:
+        try:
+            resp = await http.post(
+                "https://api.micuentaweb.pe/api-payment/V4/Charge/CreatePayment",
+                json=payload,
+                headers={
+                    "Authorization": f"Basic {auth_b64}",
+                    "Content-Type": "application/json"
+                },
+                timeout=10.0
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"[PAYMENTS] IziPay API error: {e.response.text}")
+            raise HTTPException(status_code=502, detail="Error de la pasarela de pagos")
+        except Exception as e:
+            logger.error(f"[PAYMENTS] Error de conexión a IziPay: {e}")
+            raise HTTPException(status_code=502, detail="Error de conexión a la pasarela")
+
+    if data.get("status") != "SUCCESS":
+        logger.error(f"[PAYMENTS] IziPay formToken failure: {data}")
+        raise HTTPException(status_code=502, detail="Error generando token de pago")
+
+    form_token = data.get("answer", {}).get("formToken")
+
+    if not form_token:
+        raise HTTPException(status_code=502, detail="IziPay no devolvió formToken")
+
+    return CreateSessionResponse(
+        formToken=form_token,
+        orderId=order_id
     )
 
 
