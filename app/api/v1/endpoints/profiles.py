@@ -39,17 +39,15 @@ async def update_my_profile(
             client.table("profiles")
             .update(updates)
             .eq("id", user_id)
-            .select()
-            .single()
             .execute()
         )
     except Exception as e:
         # Supabase raises APIError on postgres errors (e.g. duplicate username)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     
-    if not result.data:
+    if not result.data or len(result.data) == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Perfil no encontrado")
-    return ProfileOut(**result.data)
+    return ProfileOut(**result.data[0])
 
 
 @router.post("/me/qr-token", summary="Generar token QR del usuario")
