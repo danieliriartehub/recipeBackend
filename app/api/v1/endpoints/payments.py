@@ -46,20 +46,27 @@ def _verify_signature(kr_answer: str, kr_hash: str) -> bool:
     password  = getattr(settings, "IZIPAY_SHOP_PASSWORD",  "").strip()
 
     if not hmac_key:
-        logger.warning(
-            "[PAYMENTS] IZIPAY_HMAC_KEY no configurada — verificación omitida."
-        )
-        return True  # Permisivo si no hay clave (solo dev local)
+        logger.warning("[PAYMENTS] IZIPAY_HMAC_KEY no configurada — verificación omitida.")
+        return True
 
-    # La firma cubre: password concatenado con kr-answer
-    message  = password + kr_answer
-    expected = hmac.new(
-        hmac_key.encode("utf-8"),
-        message.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
+    def _hmac(msg: str) -> str:
+        return hmac.new(
+            hmac_key.encode("utf-8"),
+            msg.encode("utf-8"),
+            hashlib.sha256,
+        ).hexdigest()
 
-    return hmac.compare_digest(expected.lower(), kr_hash.lower())
+    # Fórmula A: solo kr-answer (documentación básica micuentaweb.pe)
+    hash_a = _hmac(kr_answer)
+    # Fórmula B: password + kr-answer (documentación avanzada)
+    hash_b = _hmac(password + kr_answer)
+
+    match_a = hmac.compare_digest(hash_a.lower(), kr_hash.lower())
+    match_b = hmac.compare_digest(hash_b.lower(), kr_hash.lower())
+
+    logger.info(f"[PAYMENTS] HMAC debug — formula_A(kr-answer)={match_a} | formula_B(password+kr-answer)={match_b}")
+
+    return match_a or match_b
 
 
 # ─── Helper: activar RECIPE Plus en Supabase ──────────────────────────────────
