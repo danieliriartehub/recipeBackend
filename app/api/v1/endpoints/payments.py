@@ -43,25 +43,25 @@ PLUS_DURATION_DAYS = 30
 
 def _verify_signature(kr_answer: str, kr_hash: str) -> bool:
     """
-    micuentaweb.pe (IziPay) envía:
-      - kr-answer: string JSON con los datos de la transacción
-      - kr-hash:   HMAC-SHA256(kr_answer, HMAC_KEY) en hexadecimal
-
-    Verificamos que el hash recibido sea válido antes de procesar el pago.
-    Si IZIPAY_HMAC_KEY no está configurada, modo permisivo (solo desarrollo).
+    IziPay (micuentaweb.pe) firma el webhook así:
+      HMAC-SHA256( password + kr-answer , HMAC_KEY )
+    donde password = IZIPAY_SHOP_PASSWORD (contraseña del comercio).
+    Ref: https://docs.micuentaweb.pe → Verificar la autenticidad de los datos
     """
-    hmac_key = getattr(settings, "IZIPAY_HMAC_KEY", "").strip()
+    hmac_key  = getattr(settings, "IZIPAY_HMAC_KEY",      "").strip()
+    password  = getattr(settings, "IZIPAY_SHOP_PASSWORD",  "").strip()
 
     if not hmac_key:
         logger.warning(
-            "[PAYMENTS] IZIPAY_HMAC_KEY no configurada — verificación omitida. "
-            "Agrégala en Railway antes de producción."
+            "[PAYMENTS] IZIPAY_HMAC_KEY no configurada — verificación omitida."
         )
-        return True  # Permisivo en desarrollo
+        return True  # Permisivo si no hay clave (solo dev local)
 
+    # La firma cubre: password concatenado con kr-answer
+    message  = password + kr_answer
     expected = hmac.new(
         hmac_key.encode("utf-8"),
-        kr_answer.encode("utf-8"),
+        message.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()
 
