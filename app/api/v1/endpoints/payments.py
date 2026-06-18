@@ -183,13 +183,33 @@ async def create_payment_session(
 # ─── Helper: buscar user_id por email en Supabase Auth ────────────────────────
 
 def _find_user_by_email(client: Client, email: str) -> str | None:
+    # Buscar por email directo en auth.users via admin API
     try:
         result = client.auth.admin.list_users()
         for user in result:
-            if user.email == email:
+            if hasattr(user, "email") and user.email == email:
                 return str(user.id)
     except Exception as e:
-        logger.error(f"[PAYMENTS] Error buscando usuario por email {email}: {e}")
+        logger.warning(f"[PAYMENTS] list_users falló: {e} — intentando via profiles")
+
+    # Fallback: buscar en profiles por email (join con auth.users via RPC no disponible,
+    # pero podemos buscar en la vista auth.users si el service role lo permite)
+    try:
+        result = client.rpc("get_user_id_by_email", {"p_email": email}).execute()
+        if result.data:
+            return str(result.data)
+    except Exception:
+        pass
+
+    # Fallback final: buscar en profiles por username o email si existe columna
+    try:
+        res = client.table("profiles").select("id").eq("email", email).single().execute()
+        if res.data:
+            return str(res.data["id"])
+    except Exception:
+        pass
+
+    logger.error(f"[PAYMENTS] No se encontró user_id para email: {email}")
     return None
 
 
@@ -258,7 +278,11 @@ async def izipay_webhook(
         raise HTTPException(status_code=400, detail="kr-answer inválido")
 
     order_status = answer.get("orderStatus", "")
-    order_id = answer.get("orderId", "")
+    # orderId puede estar en la raíz o dentro de orderDetails según la versión del webhook
+    order_id = (
+        answer.get("orderId")
+        or answer.get("orderDetails", {}).get("orderId", "")
+    )
     transactions = answer.get("transactions", [])
     transaction_uuid = transactions[0].get("uuid", "") if transactions else ""
 
