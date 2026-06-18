@@ -1,15 +1,9 @@
 """
 payments.py — Endpoints de RECIPE Plus / IziPay (micuentaweb.pe)
 
-Formato real del webhook de micuentaweb.pe (IziPay Perú):
-  - El IPN envía un POST con form-data (application/x-www-form-urlencoded)
-  - Campos: kr-answer (JSON string) + kr-hash (firma HMAC-SHA256)
-  - Verificación: HMAC-SHA256(kr-answer, HMAC_KEY) == kr-hash
-
-Credenciales en Railway:
-  IZIPAY_HMAC_KEY     = R5PwUUgemJrvPzFxnLWwOYEIyjiyys7OxWnL0C8mdoMjO  (producción)
-  IZIPAY_SHOP_USERNAME = 61792228
-  IZIPAY_SHOP_PASSWORD = prodpassword_WJe5R8c1V2KPKu7J95Q9OC5nWsMJp0ZR7f9pExaJgBv1U
+Webhook IPN: POST form-data con kr-answer (JSON) + kr-hash (HMAC-SHA256).
+Firma: HMAC-SHA256(SHOP_PASSWORD + kr-answer, HMAC_KEY)
+Credenciales se leen de variables de entorno en Railway (nunca en código).
 """
 
 import hashlib
