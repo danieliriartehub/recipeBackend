@@ -31,8 +31,7 @@ async def update_my_profile(
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
 
-    from datetime import datetime, timezone
-    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+
 
     result = (
         client.table("profiles")
