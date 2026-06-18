@@ -24,3 +24,5 @@ class ProfileOut(BaseModel):
     level_index: int = 0
     weekly_goal_kg: float = 5
     qr_code: Optional[str] = None
+    is_plus: bool = False
+    plus_expires_at: Optional[str] = None

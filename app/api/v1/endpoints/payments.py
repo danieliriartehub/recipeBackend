@@ -272,9 +272,16 @@ async def izipay_webhook(
     # ── 5. Identificar al alumno ──────────────────────────────────────────────
     user_id = None
 
-    # Opción A: el orderId fue generado con formato RECIPE-PLUS-{user_id}
+    # Opción A: el orderId fue generado con formato RECIPE-PLUS-{user_id}-{timestamp}
     if order_id and order_id.startswith("RECIPE-PLUS-"):
-        user_id = order_id.replace("RECIPE-PLUS-", "").strip()
+        # Formato: RECIPE-PLUS-<uuid>-<timestamp> → extraemos solo el uuid (partes 2..6)
+        parts = order_id.split("-")
+        # Un UUID tiene 5 partes separadas por guión: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        # El prefijo "RECIPE-PLUS-" consume 2 partes, el timestamp es el último
+        if len(parts) >= 8:
+            user_id = "-".join(parts[2:7])  # las 5 partes del UUID
+        else:
+            user_id = order_id.replace("RECIPE-PLUS-", "").strip()
         logger.info(f"[PAYMENTS] user_id extraído del orderId: {user_id}")
 
     # Opción B: buscar por email del cliente (link de pago genérico)
