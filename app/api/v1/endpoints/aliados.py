@@ -376,14 +376,27 @@ async def validate_qr(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
-    result = client.rpc("validate_qr_for_operator", {
-        "p_token": body.token,
-        "p_validator_id": body.validator_id,
-        "p_center_id": body.center_id,
-    }).execute()
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="QR inválido")
-    return ValidateQrOut(**result.data)
+    import jwt
+    from datetime import datetime, timezone
+    from app.core.config import settings
+    
+    secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
+    try:
+        payload = jwt.decode(body.token, secret, algorithms=["HS256"])
+    except jwt.ExpiredSignatureError:
+        return ValidateQrOut(valid=False, error="El código QR ha expirado (dura 3 minutos)")
+    except jwt.InvalidTokenError:
+        return ValidateQrOut(valid=False, error="Código QR inválido o corrupto")
+        
+    return ValidateQrOut(
+        valid=True,
+        user_id=payload.get("user_id"),
+        full_name=payload.get("full_name"),
+        qr_code=payload.get("qr_code"),
+        points=payload.get("points"),
+        center_id=body.center_id,
+        validated_at=datetime.now(timezone.utc).isoformat()
+    )
 
 
 @router.post("/operator/delivery-session", summary="Crear sesión de entrega")
