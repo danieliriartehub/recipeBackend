@@ -20,6 +20,8 @@ router = APIRouter()
 
 @router.get("/history", response_model=List[MerchantCouponHistoryOut], summary="Historial de cupones usados")
 async def get_coupons_history(
+    skip: int = 0,
+    limit: int = 50,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
@@ -36,6 +38,7 @@ async def get_coupons_history(
             .eq("user_id", user_id)
             .eq("status", "redeemed")
             .order("redeemed_at", desc=True)
+            .range(skip, skip + limit - 1)
             .execute()
         )
     except Exception as e:
@@ -75,6 +78,8 @@ async def get_coupons_history(
 
 @router.get("/active", response_model=List[MerchantCouponHistoryOut], summary="Historial de cupones activos")
 async def get_coupons_active(
+    skip: int = 0,
+    limit: int = 50,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
@@ -90,6 +95,7 @@ async def get_coupons_active(
             .eq("user_id", user_id)
             .in_("status", ["pending", "validated"])
             .order("expires_at", desc=False)
+            .range(skip, skip + limit - 1)
             .execute()
         )
     except Exception as e:
@@ -129,6 +135,8 @@ async def get_coupons_active(
 
 @router.get("/expired", response_model=List[MerchantCouponHistoryOut], summary="Historial de cupones expirados")
 async def get_coupons_expired(
+    skip: int = 0,
+    limit: int = 50,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
@@ -144,6 +152,7 @@ async def get_coupons_expired(
             .eq("user_id", user_id)
             .eq("status", "expired")
             .order("expires_at", desc=True)
+            .range(skip, skip + limit - 1)
             .execute()
         )
     except Exception as e:
