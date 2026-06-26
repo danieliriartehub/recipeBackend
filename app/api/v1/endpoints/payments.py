@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from urllib.parse import parse_qs
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from supabase import Client
 
 from app.core.config import settings
@@ -354,7 +354,7 @@ async def get_my_subscription(
     }
 
 
-# ─── POST /subscription/activate/{user_id} — Activación manual ───────────────
+# ─── POST /subscription/activate/{user_id} — Activación manual (ADMIN ONLY) ──
 
 @router.post(
     "/subscription/activate/{user_id}",
@@ -363,14 +363,44 @@ async def get_my_subscription(
 )
 async def activate_plus_manual(
     user_id: str,
+    x_admin_key: str = Header(..., alias="X-Admin-Key"),
     client: Client = Depends(get_supabase_admin_client),
 ):
     """
     Activa RECIPE Plus manualmente para un user_id dado.
-    Útil mientras se configura el webhook o para activaciones de soporte.
+    Requiere el header: X-Admin-Key: <ADMIN_SECRET_KEY>
+
+    SEGURIDAD:
+    - El endpoint está protegido con una clave secreta configurada en ADMIN_SECRET_KEY.
+    - Si ADMIN_SECRET_KEY no está configurada, el endpoint queda deshabilitado.
+    - include_in_schema=False lo oculta del Swagger, pero la autenticación es real.
+    - Solo usar en soporte o mientras se configura el webhook de IziPay.
     """
+    admin_secret = settings.ADMIN_SECRET_KEY.strip()
+
+    # Si la clave admin no está configurada, deshabilitar completamente el endpoint
+    if not admin_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Endpoint de activación manual no disponible.",
+        )
+
+    # Comparación segura resistente a timing attacks
+    import hmac as _hmac
+    if not _hmac.compare_digest(x_admin_key.encode(), admin_secret.encode()):
+        logger.warning(
+            f"[PAYMENTS] Intento de activación manual con clave incorrecta para user_id={user_id}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No autorizado.",
+        )
+
     try:
         _activate_plus(client, user_id, "MANUAL", "MANUAL")
+        logger.info(f"[PAYMENTS] Activación manual de RECIPE Plus para user_id={user_id}")
         return {"activated": True, "user_id": user_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[PAYMENTS] Error en activación manual para user_id={user_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error activando suscripción.")
+

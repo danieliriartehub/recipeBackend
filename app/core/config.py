@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     IZIPAY_SHOP_USERNAME: str = ""   # Usuario / Identificador de tienda (ej: 61792228)
     IZIPAY_SHOP_PASSWORD: str = ""   # Contraseña de producción
 
+    # Admin — Clave secreta para operaciones administrativas internas (ej: activación manual de Plus)
+    # Generar con: python -c "import secrets; print(secrets.token_hex(32))"
+    # En Railway (producción): configurar como variable de entorno ADMIN_SECRET_KEY
+    # En .env local: ADMIN_SECRET_KEY=cualquier-valor-para-desarrollo
+    ADMIN_SECRET_KEY: str = ""       # Vacío deshabilita el endpoint de activación manual
+
     # CORS – separar múltiples orígenes con coma en .env, ej: http://localhost:3000,https://mifrontend.com
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 
