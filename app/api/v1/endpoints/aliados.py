@@ -254,17 +254,34 @@ async def update_product(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
+    user_id = str(current_user.id)
+
+    # Verificar que el usuario autenticado es un aliado y obtener su partner_id
+    user_res = (
+        client.table("merchant_users")
+        .select("merchant_partner_id")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    if not user_res.data or not user_res.data.get("merchant_partner_id"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado: usuario no es aliado")
+    partner_id = user_res.data["merchant_partner_id"]
+
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
+
+    # Actualizar solo si el producto pertenece al partner del usuario autenticado (evita IDOR)
     result = (
         client.table("merchant_products")
         .update(updates)
         .eq("id", product_id)
+        .eq("merchant_partner_id", partner_id)  # FILTRO DE OWNERSHIP
         .execute()
     )
     if not result.data:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado o no autorizado")
     return MerchantProductOut(**result.data[0])
 
 
@@ -274,7 +291,30 @@ async def remove_product(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
-    client.table("merchant_products").update({"is_active": False}).eq("id", product_id).execute()
+    user_id = str(current_user.id)
+
+    # Verificar que el usuario autenticado es un aliado y obtener su partner_id
+    user_res = (
+        client.table("merchant_users")
+        .select("merchant_partner_id")
+        .eq("id", user_id)
+        .single()
+        .execute()
+    )
+    if not user_res.data or not user_res.data.get("merchant_partner_id"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado: usuario no es aliado")
+    partner_id = user_res.data["merchant_partner_id"]
+
+    # Desactivar solo si el producto pertenece al partner del usuario autenticado (evita IDOR)
+    result = (
+        client.table("merchant_products")
+        .update({"is_active": False})
+        .eq("id", product_id)
+        .eq("merchant_partner_id", partner_id)  # FILTRO DE OWNERSHIP
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Producto no encontrado o no autorizado")
 
 
 # ── Operador: perfil ──────────────────────────────────────────────────────────
