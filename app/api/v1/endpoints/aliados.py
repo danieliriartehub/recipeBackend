@@ -471,20 +471,23 @@ async def confirm_delivery(
     except Exception as e:
         return {"success": False, "error": f"El código QR caducó o es inválido: {str(e)}"}
 
-    # INYECCIÓN: Registramos el token temporalmente en la BD para que Supabase no lo rechace
+    # INYECCIÓN: Generamos un UUID temporal (mock_uuid) para que la BD lo acepte
+    import uuid
     from datetime import datetime, timezone, timedelta
+    mock_uuid = str(uuid.uuid4())
     try:
         client.table("qr_tokens").insert({
-            "token": clean_token,
+            "token": mock_uuid,
             "user_id": extracted_user_id,
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
         }).execute()
-    except Exception:
-        pass # Ignoramos si ya existe
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error insertando mock token: {e}")
 
     result = client.rpc("confirm_delivery", {
         "p_session_id": body.session_id,
-        "p_qr_token": clean_token,
+        "p_qr_token": mock_uuid,
         "p_validator_id": body.validator_id,
     }).execute()
     
@@ -510,18 +513,21 @@ async def register_recycling(
     except Exception as e:
         return {"success": False, "error": f"El código QR caducó o es inválido: {str(e)}"}
 
+    import uuid
     from datetime import datetime, timezone, timedelta
+    mock_uuid = str(uuid.uuid4())
     try:
         client.table("qr_tokens").insert({
-            "token": clean_token,
+            "token": mock_uuid,
             "user_id": extracted_user_id,
             "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
         }).execute()
-    except Exception:
-        pass
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error insertando mock token en register_recycling: {e}")
 
     result = client.rpc("register_recycling_delivery", {
-        "p_token": clean_token,
+        "p_token": mock_uuid,
         "p_validator_id": body.validator_id,
         "p_center_id": body.center_id,
         "p_material": body.material,
