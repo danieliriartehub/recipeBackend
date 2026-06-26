@@ -461,36 +461,26 @@ async def confirm_delivery(
 ):
     import jwt
     from app.core.config import settings
-    
-    # 1. Decodificar el JWT para obtener el código QR corto (ej. A1B2C)
+
     secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
     try:
         clean_token = body.qr_token.strip() if body.qr_token else ""
         payload = jwt.decode(clean_token, secret, algorithms=["HS256"])
         extracted_user_id = payload.get("user_id")
+    except jwt.ExpiredSignatureError:
+        return {"success": False, "error": "El código QR caducó. Pide al estudiante que genere uno nuevo."}
     except Exception as e:
-        return {"success": False, "error": f"El código QR caducó o es inválido: {str(e)}"}
+        return {"success": False, "error": f"El código QR es inválido: {str(e)}"}
 
-    # INYECCIÓN: Generamos un UUID temporal (mock_uuid) para que la BD lo acepte
-    import uuid
-    from datetime import datetime, timezone, timedelta
-    mock_uuid = str(uuid.uuid4())
-    try:
-        client.table("qr_tokens").insert({
-            "token": mock_uuid,
-            "user_id": extracted_user_id,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
-        }).execute()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error insertando mock token: {e}")
+    if not extracted_user_id:
+        return {"success": False, "error": "El QR no contiene un user_id válido."}
 
     result = client.rpc("confirm_delivery", {
         "p_session_id": body.session_id,
-        "p_qr_token": mock_uuid,
+        "p_qr_token": extracted_user_id,
         "p_validator_id": body.validator_id,
     }).execute()
-    
+
     if not result.data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo confirmar la entrega")
     return result.data
@@ -504,36 +494,28 @@ async def register_recycling(
 ):
     import jwt
     from app.core.config import settings
-    
+
     secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
     try:
         clean_token = body.token.strip() if body.token else ""
         payload = jwt.decode(clean_token, secret, algorithms=["HS256"])
         extracted_user_id = payload.get("user_id")
+    except jwt.ExpiredSignatureError:
+        return {"success": False, "error": "El código QR caducó. Pide al estudiante que genere uno nuevo."}
     except Exception as e:
-        return {"success": False, "error": f"El código QR caducó o es inválido: {str(e)}"}
+        return {"success": False, "error": f"El código QR es inválido: {str(e)}"}
 
-    import uuid
-    from datetime import datetime, timezone, timedelta
-    mock_uuid = str(uuid.uuid4())
-    try:
-        client.table("qr_tokens").insert({
-            "token": mock_uuid,
-            "user_id": extracted_user_id,
-            "expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()
-        }).execute()
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error insertando mock token en register_recycling: {e}")
+    if not extracted_user_id:
+        return {"success": False, "error": "El QR no contiene un user_id válido."}
 
     result = client.rpc("register_recycling_delivery", {
-        "p_token": mock_uuid,
+        "p_token": extracted_user_id,
         "p_validator_id": body.validator_id,
         "p_center_id": body.center_id,
         "p_material": body.material,
         "p_kg": body.kg,
     }).execute()
-    
+
     if not result.data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo registrar la entrega")
     return result.data
