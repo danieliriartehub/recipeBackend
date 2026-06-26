@@ -462,6 +462,7 @@ async def confirm_delivery(
     import jwt
     from app.core.config import settings
 
+    # 1. Validar JWT y extraer user_id
     secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
     try:
         clean_token = body.qr_token.strip() if body.qr_token else ""
@@ -475,15 +476,71 @@ async def confirm_delivery(
     if not extracted_user_id:
         return {"success": False, "error": "El QR no contiene un user_id válido."}
 
-    result = client.rpc("confirm_delivery", {
-        "p_session_id": body.session_id,
-        "p_qr_token": extracted_user_id,
-        "p_validator_id": body.validator_id,
+    # 2. Verificar que la sesión existe en estado 'draft'
+    session_res = client.table("delivery_sessions").select("*").eq("id", body.session_id).eq("status", "draft").execute()
+    if not session_res.data:
+        return {"success": False, "error": "Sesión no disponible o ya confirmada"}
+    session = session_res.data[0]
+
+    # 3. Verificar que la sesión tiene items
+    items_res = client.table("delivery_items").select("*").eq("session_id", body.session_id).execute()
+    if not items_res.data:
+        return {"success": False, "error": "La sesión no tiene materiales registrados"}
+    items = items_res.data
+
+    # 4. Verificar que el estudiante existe
+    profile_res = client.table("profiles").select("id, full_name, points").eq("id", extracted_user_id).execute()
+    if not profile_res.data:
+        return {"success": False, "error": "Estudiante no encontrado en la base de datos"}
+    profile = profile_res.data[0]
+
+    # 5. Insertar un recycling por cada item
+    for item in items:
+        client.table("recyclings").insert({
+            "user_id": extracted_user_id,
+            "center_id": session["center_id"],
+            "material": item["material"],
+            "kg": item["kg"],
+            "points_earned": item.get("points_to_award", 0),
+            "co2_saved_kg": item.get("co2_saved_kg", 0),
+        }).execute()
+
+    # 6. Confirmar la sesión
+    client.table("delivery_sessions").update({
+        "status": "confirmed",
+        "student_id": extracted_user_id,
+        "confirmed_at": datetime.now(timezone.utc).isoformat(),
+    }).eq("id", body.session_id).execute()
+
+    # 7. Registrar acción del validador
+    client.table("validator_actions").insert({
+        "validator_id": body.validator_id,
+        "center_id": session["center_id"],
+        "action": "DELIVERY_CONFIRMED",
+        "payload": {
+            "session_id": body.session_id,
+            "student_id": extracted_user_id,
+            "total_points": session.get("total_points", 0),
+            "total_kg": session.get("total_kg", 0),
+        },
     }).execute()
 
-    if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo confirmar la entrega")
-    return result.data
+    # 8. Leer saldo actualizado (el trigger de BD ya sumó los puntos)
+    updated_profile = client.table("profiles").select("points").eq("id", extracted_user_id).execute()
+    new_balance = updated_profile.data[0]["points"] if updated_profile.data else profile["points"]
+
+    logger.info(f"[CONFIRM-DELIVERY] Entrega confirmada: user={extracted_user_id}, session={body.session_id}")
+
+    return {
+        "success": True,
+        "student_name": profile["full_name"],
+        "total_points": session.get("total_points", 0),
+        "total_kg": session.get("total_kg", 0),
+        "total_co2_kg": session.get("total_co2_kg", 0),
+        "total_trees": session.get("total_trees", 0),
+        "new_balance": new_balance,
+        "confirmed_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 @router.post("/operator/register-recycling", summary="Registrar entrega individual (flujo alternativo)")
