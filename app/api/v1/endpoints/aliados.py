@@ -459,11 +459,25 @@ async def confirm_delivery(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
+    import jwt
+    from app.core.config import settings
+    
+    # 1. Decodificar el JWT para obtener el código QR corto (ej. A1B2C)
+    secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
+    try:
+        clean_token = body.qr_token.strip() if body.qr_token else ""
+        payload = jwt.decode(clean_token, secret, algorithms=["HS256"])
+        qr_code_short = payload.get("qr_code")
+    except Exception as e:
+        return {"success": False, "error": f"El código QR caducó o es inválido: {str(e)}"}
+
+    # 2. Enviar el código QR corto al RPC antiguo de la base de datos
     result = client.rpc("confirm_delivery", {
         "p_session_id": body.session_id,
-        "p_qr_token": body.qr_token,
+        "p_qr_token": qr_code_short,
         "p_validator_id": body.validator_id,
     }).execute()
+    
     if not result.data:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo confirmar la entrega")
     return result.data
@@ -475,15 +489,27 @@ async def register_recycling(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
+    import jwt
+    from app.core.config import settings
+    
+    secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
+    try:
+        clean_token = body.token.strip() if body.token else ""
+        payload = jwt.decode(clean_token, secret, algorithms=["HS256"])
+        qr_code_short = payload.get("qr_code")
+    except Exception as e:
+        return {"success": False, "error": f"El código QR caducó o es inválido: {str(e)}"}
+
     result = client.rpc("register_recycling_delivery", {
-        "p_token": body.token,
+        "p_token": qr_code_short,
         "p_validator_id": body.validator_id,
         "p_center_id": body.center_id,
         "p_material": body.material,
         "p_kg": body.kg,
     }).execute()
+    
     if not result.data:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo registrar el reciclaje")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo registrar la entrega")
     return result.data
 
 
