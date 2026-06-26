@@ -382,7 +382,8 @@ async def validate_qr(
     
     secret = settings.ADMIN_SECRET_KEY or settings.SUPABASE_SERVICE_KEY
     try:
-        payload = jwt.decode(body.token, secret, algorithms=["HS256"])
+        clean_token = body.token.strip() if body.token else ""
+        payload = jwt.decode(clean_token, secret, algorithms=["HS256"])
     except jwt.ExpiredSignatureError as e:
         return ValidateQrOut(valid=False, error=f"El código QR ha expirado (dura 1 minuto) - {str(e)}")
     except jwt.InvalidTokenError as e:
