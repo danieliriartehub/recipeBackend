@@ -11,6 +11,8 @@ router = APIRouter()
 
 @router.get("/", response_model=List[RecyclingOut], summary="Historial de reciclajes del usuario")
 async def get_recyclings(
+    skip: int = 0,
+    limit: int = 50,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
@@ -19,6 +21,8 @@ async def get_recyclings(
         client.table("recyclings")
         .select("*, centers(name, district)")
         .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .range(skip, skip + limit - 1)
         .execute()
     )
     return [RecyclingOut(**r) for r in (result.data or [])]

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 from typing import Optional
 from datetime import datetime
 
@@ -180,13 +180,13 @@ class MarketplaceProductOut(BaseModel):
 
 class MerchantBannerCreate(BaseModel):
     title: Optional[str] = None
-    link_url: Optional[str] = None
+    link_url: Optional[HttpUrl] = None
     is_active: bool = True
     display_order: int = 0
 
 class MerchantBannerUpdate(BaseModel):
     title: Optional[str] = None
-    link_url: Optional[str] = None
+    link_url: Optional[HttpUrl] = None
     is_active: Optional[bool] = None
     display_order: Optional[int] = None
 
@@ -195,7 +195,7 @@ class MerchantBannerOut(BaseModel):
     merchant_partner_id: str
     title: Optional[str] = None
     banner_url: str
-    link_url: Optional[str] = None
+    link_url: Optional[HttpUrl] = None
     is_active: bool
     display_order: int
     created_at: Optional[datetime] = None

@@ -11,6 +11,8 @@ router = APIRouter()
 
 @router.get("/", response_model=List[ScanOut], summary="Historial de escaneos del usuario")
 async def get_scan_history(
+    skip: int = 0,
+    limit: int = 50,
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
@@ -19,7 +21,8 @@ async def get_scan_history(
         client.table("scans")
         .select("*, centers(name)")
         .eq("user_id", user_id)
-        .limit(20)
+        .order("created_at", desc=True)
+        .range(skip, skip + limit - 1)
         .execute()
     )
     return [ScanOut(**r) for r in (result.data or [])]

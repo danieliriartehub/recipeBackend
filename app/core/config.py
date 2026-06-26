@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Recipe Backend API"
     VERSION: str = "0.1.0"
     API_V1_STR: str = "/api/v1"
+    ENVIRONMENT: str = "development" # "production" en Railway para ocultar Swagger
 
     # Supabase
     SUPABASE_URL: str

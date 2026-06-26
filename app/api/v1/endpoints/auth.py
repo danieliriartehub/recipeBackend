@@ -5,6 +5,7 @@ from supabase import Client
 from app.core.config import settings
 from app.core.supabase import get_supabase_client, get_supabase_admin_client
 from app.core.dependencies import get_current_user
+from app.core.limiter import limiter
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
@@ -74,7 +75,9 @@ def _clear_refresh_cookie(response: Response) -> None:
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post("/login", response_model=LoginResponse, summary="Iniciar sesión")
+@limiter.limit("5/minute")
 async def login(
+    request: Request,
     body: LoginRequest,
     response: Response,
     client: Client = Depends(get_supabase_client),
@@ -105,7 +108,9 @@ async def login(
 
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED, summary="Registrar usuario")
+@limiter.limit("5/minute")
 async def register(
+    request: Request,
     body: RegisterRequest,
     response: Response,
     client: Client = Depends(get_supabase_client),
@@ -153,6 +158,7 @@ async def register(
 
 
 @router.post("/refresh", response_model=RefreshResponse, summary="Renovar access_token")
+@limiter.limit("10/minute")
 async def refresh_token(
     request: Request,
     response: Response,
@@ -163,6 +169,11 @@ async def refresh_token(
     Este endpoint es llamado automáticamente por el frontend al arrancar o cuando
     el access_token en memoria está a punto de expirar.
     """
+    # MEDIO-5: Mitigación CSRF verificando explícitamente el Origin
+    origin = request.headers.get("origin")
+    if origin and origin not in settings.allowed_origins_list:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Origen no permitido (CSRF protection)")
+
     token = request.cookies.get(REFRESH_COOKIE)
     if not token:
         raise HTTPException(
@@ -214,7 +225,9 @@ async def logout(
 
 
 @router.post("/forgot-password", status_code=status.HTTP_204_NO_CONTENT, summary="Recuperar contraseña")
+@limiter.limit("3/minute")
 async def forgot_password(
+    request: Request,
     body: ForgotPasswordRequest,
     client: Client = Depends(get_supabase_client),
 ):

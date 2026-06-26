@@ -159,14 +159,14 @@ async def create_payment_session(
             resp.raise_for_status()
             data = resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"[PAYMENTS] IziPay API error: {e.response.text}")
+            logger.error(f"[PAYMENTS] IziPay API error: HTTP {e.response.status_code}")
             raise HTTPException(status_code=502, detail="Error de la pasarela de pagos")
         except Exception as e:
             logger.error(f"[PAYMENTS] Error de conexión a IziPay: {e}")
             raise HTTPException(status_code=502, detail="Error de conexión a la pasarela")
 
     if data.get("status") != "SUCCESS":
-        logger.error(f"[PAYMENTS] IziPay formToken failure: {data}")
+        logger.error("[PAYMENTS] IziPay formToken failure: status != SUCCESS")
         raise HTTPException(status_code=502, detail="Error generando token de pago")
 
     form_token = data.get("answer", {}).get("formToken")
@@ -274,7 +274,7 @@ async def izipay_webhook(
     try:
         answer: dict = json.loads(kr_answer)
     except json.JSONDecodeError:
-        logger.error(f"[PAYMENTS] kr-answer no es JSON válido: {kr_answer[:200]}")
+        logger.error("[PAYMENTS] kr-answer no es JSON válido (contenido ofuscado por seguridad)")
         raise HTTPException(status_code=400, detail="kr-answer inválido")
 
     order_status = answer.get("orderStatus", "")

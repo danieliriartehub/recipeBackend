@@ -216,6 +216,11 @@ async def update_merchant_partner(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
+    user_id = str(current_user.id)
+    user_res = client.table("merchant_users").select("merchant_partner_id").eq("id", user_id).single().execute()
+    if not user_res.data or user_res.data.get("merchant_partner_id") != partner_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No autorizado para modificar este partner")
+
     updates = body.model_dump(exclude_none=True)
     if not updates:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No hay campos para actualizar")
