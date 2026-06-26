@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from supabase import Client
 
@@ -16,6 +17,8 @@ from app.schemas.auth import (
     SessionOut,
     UserOut,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -204,8 +207,8 @@ async def logout(
     """
     try:
         client.auth.sign_out()
-    except Exception:
-        pass  # Si falla el sign_out en servidor, el cliente igual debe limpiar su sesión
+    except Exception as e:
+        logger.warning(f"[AUTH] sign_out en servidor falló (se ignora): {e}")
     finally:
         _clear_refresh_cookie(response)
 
@@ -225,9 +228,10 @@ async def forgot_password(
     try:
         client.auth.reset_password_for_email(body.email, options)
     except Exception as e:
+        logger.error(f"[AUTH] Error al recuperar contraseña para {body.email}: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            detail="Error procesando la recuperación de contraseña.",
         ) from e
 
 

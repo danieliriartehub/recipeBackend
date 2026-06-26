@@ -203,6 +203,42 @@ async def redeem_product(
     current_time_dt = datetime.now(timezone.utc)
     current_time = current_time_dt.isoformat()
     
+    # Intentar usar el RPC atómico (ALTO-1)
+    try:
+        rpc_result = client.rpc("redeem_product_atomic", {
+            "p_user_id": user_id,
+            "p_product_id": body.product_id
+        }).execute()
+        
+        rpc_data = rpc_result.data
+        if rpc_data.get("error"):
+            # Si el RPC retornó un error de negocio (puntos insuficientes, sin stock, etc.)
+            raise HTTPException(status_code=rpc_data.get("code", 400), detail=rpc_data.get("error"))
+            
+        if rpc_data.get("success"):
+            # Dar formato a la salida para igualar RedemptionOut
+            redemption = rpc_data["redemption"]
+            product = rpc_data["product"]
+            if product.get("featured") is None:
+                product["featured"] = False
+            if "name" in product["merchant"] and "business_name" not in product["merchant"]:
+                pass # ya tiene formato
+            
+            resp = redemption
+            resp["product"] = product
+            return RedemptionOut(**resp)
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        # Fallback si el RPC no existe (ej. la migración SQL aún no se ha corrido) o falló
+        # Solo hacemos el fallback si es un error de "function does not exist" o similar.
+        # Si es una HTTPException lanzada arriba, la volvemos a levantar
+        if isinstance(e, HTTPException):
+            raise e
+        logger.warning(f"[MARKETPLACE] RPC redeem_product_atomic falló, usando fallback: {e}")
+        
+    # --- FALLBACK LOGIC (No atómico, mantener hasta que todos los entornos tengan el RPC) ---
     # 1. Validar Producto
     prod_result = (
         client.table("merchant_products")
