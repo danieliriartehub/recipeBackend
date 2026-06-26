@@ -52,8 +52,20 @@ async def generate_qr_token(
     current_user: dict = Depends(get_current_user),
     client: Client = Depends(get_supabase_admin_client),
 ):
+    import uuid
     user_id = str(current_user.id)
-    result = client.rpc("generate_qr_token", {"p_user_id": user_id}).execute()
+    new_token = str(uuid.uuid4())
+    
+    result = (
+        client.table("profiles")
+        .update({"qr_token": new_token})
+        .eq("id", user_id)
+        .select("qr_token")
+        .single()
+        .execute()
+    )
+    
     if not result.data:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="No se pudo generar el token QR")
+        
     return result.data
