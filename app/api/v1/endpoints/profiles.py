@@ -73,9 +73,9 @@ async def generate_qr_token(
         qr_code = str(uuid.uuid4()).split("-")[0].upper()
         client.table("profiles").update({"qr_code": qr_code}).eq("id", user_id).execute()
 
-    # 2. Generar JWT
+    # 2. Generar JWT (1 minuto para máxima seguridad y coincidir con la UI)
     issued_at = datetime.now(timezone.utc)
-    expires_in_minutes = 3
+    expires_in_minutes = 1
     expires_at = issued_at + timedelta(minutes=expires_in_minutes)
     
     payload = {
