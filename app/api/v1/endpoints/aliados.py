@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from postgrest.exceptions import APIError
 from datetime import datetime, timezone
 
-from app.core.supabase import get_supabase_admin_client
+from app.core.supabase import get_supabase_admin_client, get_supabase_client
 from app.core.dependencies import get_current_user
 from app.schemas.aliados import (
     MerchantProductCreate,
@@ -31,12 +31,14 @@ from app.schemas.aliados import (
     AdTrackingRequest,
 )
 
-import os
 import google.generativeai as genai
 import json
+import logging
 import random
 
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+from app.core.config import settings as _settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -94,12 +96,28 @@ async def generate_product_details(
     payload: GenerateProductDetailsRequest,
     current_user: dict = Depends(get_current_user)
 ):
+    # ALTO-3: Usar clave gestionada por pydantic_settings en lugar de os.environ.get
+    api_key = getattr(_settings, "GEMINI_API_KEY", "").strip()
+    if not api_key:
+        # Si no hay API key configurada, retornar fallback sin llamar a la IA
+        return GenerateProductDetailsOut(
+            description=f"Producto disponible: {payload.name[:60]}.",
+            category="General"
+        )
+
+    # Sanitizar y limitar input para prevenir prompt injection
+    # Máximo 100 caracteres, eliminar caracteres de control y delimitadores de prompt
+    product_name = payload.name[:100].strip()
+    product_name = product_name.replace('"', '').replace('`', '').replace('{', '').replace('}', '')
+    product_name = product_name.replace('\n', ' ').replace('\r', ' ')
+
     try:
+        genai.configure(api_key=api_key)
         model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
         Eres un experto en marketing y ventas para RECIPE, una plataforma de reciclaje donde estudiantes universitarios canjean "Puntos ECO" por productos ecológicos y beneficios.
         
-        El aliado comercial quiere registrar un nuevo producto llamado: "{payload.name}".
+        El aliado comercial quiere registrar un nuevo producto llamado: "{product_name}".
         
         Tu tarea es:
         1. Redactar una descripción muy atractiva, persuasiva y corta (máximo 2-3 líneas) para este producto, enfocándote en el público universitario. Usa algún emoji.
@@ -119,17 +137,17 @@ async def generate_product_details(
             text = text[3:]
         if text.endswith("```"):
             text = text[:-3]
-        
+
         data = json.loads(text.strip())
         return GenerateProductDetailsOut(
             description=data.get("description", "Descripción generada automáticamente"),
             category=data.get("category", "General")
         )
     except Exception as e:
-        print(f"Error generando detalles con IA: {e}")
-        # Fallback si falla la IA o no hay API key configurada
+        logger.warning(f"[ALIADOS] Error generando detalles con IA: {e}")
+        # Fallback si falla la IA
         return GenerateProductDetailsOut(
-            description=f"El producto perfecto para tus necesidades: {payload.name}.",
+            description=f"Producto disponible: {product_name}.",
             category="General"
         )
 
@@ -243,8 +261,11 @@ async def create_product(
         if not result.data:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se pudo crear el producto")
         return MerchantProductOut(**result.data[0])
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"DB Error: {str(e)}")
+        logger.error(f"[ALIADOS] Error al crear producto: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Error al crear el producto")
 
 
 @router.patch("/products/{product_id}", response_model=MerchantProductOut, summary="Actualizar producto")
@@ -533,7 +554,8 @@ async def delete_partner_banner(
 
 @router.get("/banners", summary="Obtener todos los banners activos (para estudiantes)")
 async def get_active_banners(
-    client: Client = Depends(get_supabase_admin_client)
+    # ALTO-5: usar cliente anon que respeta Row Level Security, no service_role
+    client: Client = Depends(get_supabase_client)
 ):
     try:
         result = (

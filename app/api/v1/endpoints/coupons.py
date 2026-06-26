@@ -3,6 +3,8 @@ from supabase import Client
 from typing import List
 from datetime import datetime, timezone
 
+import logging
+
 from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
 from app.schemas.coupons import (
@@ -11,6 +13,8 @@ from app.schemas.coupons import (
     CouponRedeemRequest,
     CouponRedeemOut
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -35,9 +39,10 @@ async def get_coupons_history(
             .execute()
         )
     except Exception as e:
+        logger.error(f"[COUPONS] Error consultando el historial de cupones: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error consultando el historial de cupones: {str(e)}"
+            detail="Error consultando el historial de cupones"
         )
         
     history = []
@@ -88,9 +93,10 @@ async def get_coupons_active(
             .execute()
         )
     except Exception as e:
+        logger.error(f"[COUPONS] Error consultando cupones activos: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error consultando cupones activos: {str(e)}"
+            detail="Error consultando cupones activos"
         )
         
     history = []
@@ -141,9 +147,10 @@ async def get_coupons_expired(
             .execute()
         )
     except Exception as e:
+        logger.error(f"[COUPONS] Error consultando cupones expirados: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error consultando cupones expirados: {str(e)}"
+            detail="Error consultando cupones expirados"
         )
         
     history = []
@@ -205,9 +212,10 @@ async def validate_coupon(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="No se encontró el código ingresado."
             )
+        logger.error(f"[COUPONS] DB Error validando cupón: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"DB Error: {str(e)}"
+            detail="Error interno validando el código."
         )
 
     if not result.data:
@@ -258,7 +266,8 @@ async def redeem_coupon(
     except Exception as e:
         if hasattr(e, "code") and e.code == "PGRST116":
             raise HTTPException(status_code=404, detail="No se encontró el cupón.")
-        raise HTTPException(status_code=500, detail=f"DB Error: {str(e)}")
+        logger.error(f"[COUPONS] DB Error obteniendo cupón a canjear: {e}")
+        raise HTTPException(status_code=500, detail="Error de base de datos interno.")
 
     if not result.data:
         raise HTTPException(status_code=404, detail="No se encontró el cupón.")
@@ -285,6 +294,7 @@ async def redeem_coupon(
             "redeemed_at": now_iso
         }).eq("id", payload.redemption_id).execute()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al registrar canje: {str(e)}")
+        logger.error(f"[COUPONS] Error registrando canje en DB: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al registrar canje.")
 
     return CouponRedeemOut(success=True, message="Canje registrado correctamente.")

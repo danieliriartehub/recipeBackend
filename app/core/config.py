@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # En .env local: ADMIN_SECRET_KEY=cualquier-valor-para-desarrollo
     ADMIN_SECRET_KEY: str = ""       # Vacío deshabilita el endpoint de activación manual
 
+    # Google Gemini — API key para generación de descripciones de productos con IA
+    # Panel: https://aistudio.google.com/app/apikey
+    # En Railway: configurar como variable de entorno GEMINI_API_KEY
+    GEMINI_API_KEY: str = ""         # Vacío deshabilita la generación con IA (usa fallback)
+
     # CORS – separar múltiples orígenes con coma en .env, ej: http://localhost:3000,https://mifrontend.com
     ALLOWED_ORIGINS: str = "http://localhost:3000"
 

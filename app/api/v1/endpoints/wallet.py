@@ -65,4 +65,15 @@ async def soft_delete_entry(
     client: Client = Depends(get_supabase_admin_client),
 ):
     from datetime import datetime, timezone
-    client.table("wallet_entries").update({"deleted_at": datetime.now(timezone.utc).isoformat()}).eq("id", entry_id).execute()
+    user_id = str(current_user.id)
+
+    # Filtrar por user_id para evitar IDOR (un usuario no puede borrar entradas ajenas)
+    result = (
+        client.table("wallet_entries")
+        .update({"deleted_at": datetime.now(timezone.utc).isoformat()})
+        .eq("id", entry_id)
+        .eq("user_id", user_id)  # FILTRO DE OWNERSHIP
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entrada no encontrada")
