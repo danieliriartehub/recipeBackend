@@ -204,12 +204,14 @@ async def redeem_product(
     current_time = current_time_dt.isoformat()
     
     # Intentar usar el RPC atómico (ALTO-1)
+    rpc_executed = False
     try:
         rpc_result = client.rpc("redeem_product_atomic", {
             "p_user_id": user_id,
             "p_product_id": body.product_id
         }).execute()
         
+        rpc_executed = True
         rpc_data = rpc_result.data
         if rpc_data.get("error"):
             # Si el RPC retornó un error de negocio (puntos insuficientes, sin stock, etc.)
@@ -221,8 +223,8 @@ async def redeem_product(
             product = rpc_data["product"]
             if product.get("featured") is None:
                 product["featured"] = False
-            if "name" in product["merchant"] and "business_name" not in product["merchant"]:
-                pass # ya tiene formato
+            if "business_name" in product["merchant"]:
+                product["merchant"]["name"] = product["merchant"].pop("business_name")
             
             resp = redemption
             resp["product"] = product
@@ -231,11 +233,14 @@ async def redeem_product(
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        # Fallback si el RPC no existe (ej. la migración SQL aún no se ha corrido) o falló
-        # Solo hacemos el fallback si es un error de "function does not exist" o similar.
-        # Si es una HTTPException lanzada arriba, la volvemos a levantar
         if isinstance(e, HTTPException):
             raise e
+        
+        if rpc_executed:
+            # Si el RPC ya se ejecutó y luego falló Pydantic, lanzamos el error para no hacer fallback (doble cobro)
+            logger.error(f"[MARKETPLACE] Error procesando respuesta del RPC (parseo): {e}")
+            raise HTTPException(status_code=500, detail="Error interno al procesar canje")
+            
         logger.warning(f"[MARKETPLACE] RPC redeem_product_atomic falló, usando fallback: {e}")
         
     # --- FALLBACK LOGIC (No atómico, mantener hasta que todos los entornos tengan el RPC) ---
