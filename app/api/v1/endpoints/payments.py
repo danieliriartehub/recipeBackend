@@ -66,9 +66,7 @@ def _verify_signature(kr_answer: str, kr_hash: str) -> bool:
 
     logger.info(f"[PAYMENTS] HMAC debug — formula_A(kr-answer)={match_a} | formula_B(password+kr-answer)={match_b} | kr_hash_recibido={kr_hash[:10]}...")
 
-    # TEMPORAL: aceptar siempre para diagnosticar el flujo completo
-    # TODO: reactivar validacion una vez confirmada la formula correcta
-    return True
+    return match_a or match_b
 
 
 # ─── Helper: activar RECIPE Plus en Supabase ──────────────────────────────────
