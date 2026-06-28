@@ -18,6 +18,11 @@ class ForgotPasswordRequest(BaseModel):
     redirect_to: Optional[str] = None
 
 
+class ResetPasswordRequest(BaseModel):
+    access_token: str
+    new_password: str
+
+
 class UserOut(BaseModel):
     id: str
     email: str
