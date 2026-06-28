@@ -666,8 +666,7 @@ async def delete_partner_banner(
 
 @router.get("/banners", summary="Obtener todos los banners activos (para estudiantes)")
 async def get_active_banners(
-    # ALTO-5: usar cliente anon que respeta Row Level Security, no service_role
-    client: Client = Depends(get_supabase_client)
+    client: Client = Depends(get_supabase_admin_client)
 ):
     try:
         result = (
