@@ -12,6 +12,7 @@ from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
     ForgotPasswordRequest,
+    ResetPasswordRequest,
     RefreshResponse,
     MeResponse,
     ProfileOut,
@@ -245,6 +246,48 @@ async def forgot_password(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Error procesando la recuperación de contraseña.",
+        ) from e
+
+
+@router.post("/reset-password", status_code=status.HTTP_204_NO_CONTENT, summary="Cambiar contraseña con token de recuperación")
+@limiter.limit("5/minute")
+async def reset_password(
+    request: Request,
+    body: ResetPasswordRequest,
+    admin_client: Client = Depends(get_supabase_admin_client),
+):
+    """
+    Actualiza la contraseña del usuario usando el access_token que Supabase
+    incluye en el link de recuperación (hash de la URL).
+    El cliente extrae ese token del fragmento de URL y lo envía aquí.
+    """
+    # 1. Validar que el token es legítimo obteniendo el usuario
+    try:
+        result = admin_client.auth.get_user(body.access_token)
+        if result.user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token inválido o expirado. Solicita un nuevo link.",
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado. Solicita un nuevo link.",
+        ) from e
+
+    # 2. Actualizar la contraseña usando el admin client
+    try:
+        admin_client.auth.admin.update_user_by_id(
+            str(result.user.id),
+            {"password": body.new_password}
+        )
+    except Exception as e:
+        logger.error(f"[AUTH] Error al cambiar contraseña para user {result.user.id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No se pudo actualizar la contraseña. Intenta de nuevo.",
         ) from e
 
 
