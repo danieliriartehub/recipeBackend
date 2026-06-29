@@ -147,6 +147,19 @@ class MarketplaceMerchantOut(BaseModel):
     logo_url: Optional[str] = None
 
 
+class MarketplaceMerchantDetailOut(BaseModel):
+    id: str
+    name: Optional[str] = None
+    tagline: Optional[str] = None
+    description: Optional[str] = None
+    logo_url: Optional[str] = None
+    cover_url: Optional[str] = None
+    brand_color: Optional[str] = None
+    category: Optional[str] = None
+    email: Optional[str] = None
+    website_url: Optional[str] = None
+
+
 class MarketplaceProductListOut(BaseModel):
     id: str
     name: str

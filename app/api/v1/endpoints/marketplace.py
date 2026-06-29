@@ -11,7 +11,7 @@ router = APIRouter()
 
 from typing import Optional
 from datetime import datetime, timezone, timedelta
-from app.schemas.aliados import MarketplaceProductOut, MarketplaceProductListOut, MarketplaceMerchantOut, MerchantPartnerOut
+from app.schemas.aliados import MarketplaceProductOut, MarketplaceProductListOut, MarketplaceMerchantOut, MerchantPartnerOut, MarketplaceMerchantDetailOut
 
 @router.get("/merchants", response_model=List[MarketplaceMerchantOut], summary="Obtener lista de aliados activos")
 async def get_marketplace_merchants(
@@ -34,7 +34,7 @@ async def get_marketplace_merchants(
     return data
 
 
-@router.get("/merchants/{merchant_id}", response_model=MerchantPartnerOut, summary="Detalle de un aliado")
+@router.get("/merchants/{merchant_id}", response_model=MarketplaceMerchantDetailOut, summary="Detalle de un aliado")
 async def get_marketplace_merchant(
     merchant_id: str,
     current_user: dict = Depends(get_current_user),
@@ -55,8 +55,14 @@ async def get_marketplace_merchant(
     r = result.data
     if "business_name" in r:
         r["name"] = r.pop("business_name")
+    if "profile_description" in r:
+        r["description"] = r.pop("profile_description")
+    if "banner_url" in r:
+        r["cover_url"] = r.pop("banner_url")
+    if "contact_email" in r:
+        r["email"] = r.pop("contact_email")
         
-    return MerchantPartnerOut(**r)
+    return MarketplaceMerchantDetailOut(**r)
 
 
 @router.get("/categories", response_model=List[str], summary="Obtener categorías de productos")
