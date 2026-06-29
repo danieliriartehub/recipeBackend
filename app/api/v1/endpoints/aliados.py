@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from supabase import Client
-from typing import List, Optional, Any
+from typing import List, Optional
 from datetime import datetime, timezone
 from postgrest.exceptions import APIError
-from datetime import datetime, timezone
 
-from app.core.supabase import get_supabase_admin_client, get_supabase_client
+from app.core.supabase import get_supabase_admin_client
 from app.core.dependencies import get_current_user
 from app.schemas.aliados import (
     MerchantProductCreate,
@@ -23,7 +22,6 @@ from app.schemas.aliados import (
     ConfirmDeliveryRequest,
     RegisterRecyclingRequest,
     MarketplaceProductOut,
-    MerchantBannerCreate,
     MerchantBannerUpdate,
     MerchantBannerOut,
     GenerateProductDetailsRequest,
@@ -176,8 +174,6 @@ async def get_merchant_me(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aliado no encontrado")
     return MerchantUserOut(**result.data)
 
-
-from postgrest.exceptions import APIError
 
 @router.patch("/partner/me", response_model=MerchantPartnerOut, summary="Actualizar datos del partner logueado")
 async def update_my_merchant_partner(
